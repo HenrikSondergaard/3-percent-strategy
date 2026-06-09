@@ -1,5 +1,437 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>SPX Options Chain</title></head>
-<body><p>Coming soon</p></body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3% Strategy — SPX Options Chain</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  background: #0d1117; color: #c9d1d9;
+}
+.header {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 14px 24px; display: flex; align-items: center; gap: 20px;
+  flex-wrap: wrap;
+}
+.header h1 { font-size: 18px; color: #58a6ff; white-space: nowrap; }
+.controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.controls label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+.controls select, .controls button {
+  background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+  font-family: inherit;
+}
+.controls select:focus, .controls button:focus { outline: none; border-color: #58a6ff; }
+.btn-load { background: #238636; border-color: #2ea043; font-weight: 600; }
+.btn-load:hover { background: #2ea043; }
+.btn-load:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-refresh {
+  background: #21262d; border-color: #30363d; color: #58a6ff; font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+}
+.btn-refresh:hover { background: #30363d; }
+.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-refresh .spinner {
+  display: none; width: 14px; height: 14px;
+  border: 2px solid #30363d; border-top-color: #58a6ff;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+.btn-refresh.loading .spinner { display: inline-block; }
+.spot {
+  margin-left: auto; font-size: 22px; font-weight: 700; color: #3fb950;
+}
+.spot .label { font-size: 11px; color: #8b949e; font-weight: 400; }
+.legend {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 6px 24px; display: flex; gap: 24px; font-size: 11px; color: #8b949e;
+  align-items: center; flex-wrap: wrap;
+}
+.legend span { display: flex; align-items: center; gap: 6px; }
+.legend .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-call { background: #3fb950; }
+.dot-put  { background: #f85149; }
+.dot-atm  { background: #58a6ff; }
+.refresh-status {
+  margin-left: auto; font-size: 11px;
+}
+.refresh-status.ok { color: #3fb950; }
+.refresh-status.pending { color: #d29922; }
+.refresh-status.error { color: #f85149; }
+.table-wrap { overflow: auto; max-height: calc(100vh - 140px); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th {
+  position: sticky; top: 0; background: #161b22; z-index: 2;
+  padding: 8px 8px; text-align: right; white-space: nowrap;
+  border-bottom: 2px solid #30363d; color: #8b949e; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.3px; font-size: 10px;
+}
+thead th.strike-col {
+  text-align: center; color: #e6edf3; font-size: 12px;
+}
+thead th.call-section { color: #3fb950; }
+thead th.put-section  { color: #f85149; }
+tbody tr { border-bottom: 1px solid #21262d; }
+tbody tr:hover { background: #161b22; }
+tbody tr.atm-row { background: rgba(88,166,255,0.07); }
+tbody tr.atm-row:hover { background: rgba(88,166,255,0.12); }
+tbody td { padding: 4px 8px; text-align: right; white-space: nowrap; }
+tbody td.strike-col {
+  text-align: center; font-weight: 700; color: #e6edf3;
+  background: #0d1117; position: sticky; left: 0; z-index: 1;
+  border-right: 1px solid #30363d; border-left: 1px solid #30363d;
+}
+tr.atm-row td.strike-col { background: #111d2e; }
+td.itm { background: rgba(255,255,255,0.02); }
+td.empty { color: #484f58; }
+td.pos-delta { color: #3fb950; }
+td.neg-delta { color: #f85149; }
+.loading {
+  text-align: center; padding: 60px; color: #8b949e; font-size: 14px;
+}
+.loading .spinner {
+  display: inline-block; width: 24px; height: 24px;
+  border: 2px solid #30363d; border-top-color: #58a6ff;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.error { color: #f85149; text-align: center; padding: 40px; }
+footer {
+  background: #161b22; border-top: 1px solid #30363d;
+  padding: 8px 24px; font-size: 11px; color: #484f58;
+  display: flex; justify-content: space-between;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>3% Strategy</h1>
+  <div class="controls">
+    <div>
+      <label>Expiration</label><br>
+      <select id="expSelect"><option value="">loading...</option></select>
+    </div>
+    <div>
+      <label>Strikes</label><br>
+      <select id="strikeSelect">
+        <option value="10">10</option>
+        <option value="20">20</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+    <div style="align-self:flex-end">
+      <button class="btn-load" id="goBtn" disabled>Load</button>
+    </div>
+    <div style="align-self:flex-end">
+      <button class="btn-refresh" id="refreshBtn" title="Fetch fresh data from Yahoo Finance">
+        <span class="spinner"></span>
+        ↻ Refresh Data
+      </button>
+    </div>
+  </div>
+  <div class="spot">
+    <div class="label">SPX SPOT (estimated)</div>
+    <div id="spotPrice">--</div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot dot-call"></span> Calls</span>
+  <span><span class="dot dot-put"></span> Puts</span>
+  <span><span class="dot dot-atm"></span> ATM row</span>
+  <span>Delta: Black-Scholes (r = 4.5%)</span>
+  <span id="refreshStatus" class="refresh-status"></span>
+</div>
+
+<div class="table-wrap" id="tableWrap">
+  <div id="content">
+    <div class="loading">Loading expirations...</div>
+  </div>
+</div>
+
+<footer>
+  <span>Data: Yahoo Finance / yfinance — Delta: Black-Scholes</span>
+  <span id="footerInfo"></span>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const expSel = $('expSelect');
+const strikeSel = $('strikeSelect');
+const goBtn = $('goBtn');
+const refreshBtn = $('refreshBtn');
+const content = $('content');
+const spotEl = $('spotPrice');
+const footerInfo = $('footerInfo');
+const refreshStatus = $('refreshStatus');
+
+// Config: set WORKER_URL in config.js or define here
+let WORKER_URL = ''; // will be loaded from config.js if available
+
+const RISK_FREE_RATE = 0.045;
+
+// ── Black-Scholes Delta (browser-side) ──
+function bsDelta(spot, strike, ttm, iv, isCall) {
+  if (!spot || !strike || !ttm || !iv || ttm <= 0 || iv <= 0) return null;
+  const d1 = (Math.log(spot / strike) + (RISK_FREE_RATE + 0.5 * iv * iv) * ttm) / (iv * Math.sqrt(ttm));
+  const nd1 = 0.5 * (1 + erf(d1 / Math.sqrt(2)));
+  return isCall ? round4(nd1) : round4(nd1 - 1);
+}
+function erf(x) {
+  const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  const t = 1.0/(1.0+p*x);
+  const y = 1.0-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return sign*y;
+}
+
+// ── Data cache ──
+let allExpirations = [];
+let chainCache = {};  // expiration -> chain data
+
+// ── Load config then init ──
+(async () => {
+  try {
+    const r = await fetch('config.js');
+    if (r.ok) {
+      const text = await r.text();
+      const match = text.match(/WORKER_URL\s*=\s*'([^']*)'/);
+      if (match) WORKER_URL = match[1];
+    }
+  } catch(e) {}
+
+  try {
+    const r = await fetch('data/expirations.json');
+    if (!r.ok) throw new Error('No data');
+    const data = await r.json();
+    const fetchedAt = data.fetched_at || null;
+    allExpirations = data.expirations || [];
+    populateExpirations(allExpirations);
+    refreshStatus.textContent = fetchedAt ? 'Data: ' + new Date(fetchedAt).toLocaleString() : '';
+    refreshStatus.className = 'refresh-status ok';
+    goBtn.disabled = false;
+    loadChain();
+  } catch(e) {
+    content.innerHTML = '<div class="error">No data yet. Click "Refresh Data" to fetch options chain from Yahoo Finance.</div>';
+    refreshStatus.textContent = 'No cached data';
+    refreshStatus.className = 'refresh-status error';
+  }
+})();
+
+function populateExpirations(exps) {
+  expSel.innerHTML = '';
+  exps.forEach((e, i) => {
+    const o = document.createElement('option');
+    o.value = e;
+    o.textContent = fmtExp(e);
+    if (i === 0) o.selected = true;
+    expSel.appendChild(o);
+  });
+}
+
+// ── Event handlers ──
+goBtn.onclick = loadChain;
+expSel.onchange = loadChain;
+strikeSel.onchange = loadChain;
+refreshBtn.onclick = triggerRefresh;
+
+async function loadChain() {
+  const exp = expSel.value;
+  if (!exp) return;
+  const strikes = strikeSel.value;
+  goBtn.disabled = true;
+  content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading chain...</div>';
+
+  try {
+    let data;
+    if (chainCache[exp]) {
+      data = chainCache[exp];
+    } else {
+      const r = await fetch('data/chain_' + exp + '.json');
+      if (!r.ok) throw new Error('Chain not found for ' + exp);
+      data = await r.json();
+      chainCache[exp] = data;
+    }
+
+    spotEl.textContent = data.spot ? fmtNum(data.spot, 2) : '--';
+    renderTable(data, strikes);
+    const dte = Math.round((new Date(exp + 'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
+    footerInfo.textContent = data.rows.length + ' strikes | ' + fmtExp(data.expiration) + ' | DTE: ' + dte;
+  } catch(e) {
+    content.innerHTML = '<div class="error">Error: ' + e.message + '. Try refreshing data.</div>';
+  } finally {
+    goBtn.disabled = false;
+  }
+}
+
+function renderTable(data, strikeLimit) {
+  const allRows = data.rows;
+  const spot = data.spot || 0;
+  const ttm = data.ttm || 0;
+
+  // Compute delta for each row if not present
+  allRows.forEach(r => {
+    if (r.call && r.call.iv != null && r.call.delta == null) {
+      r.call.delta = bsDelta(spot, r.strike, ttm, r.call.iv / 100, true);
+    }
+    if (r.put && r.put.iv != null && r.put.delta == null) {
+      r.put.delta = bsDelta(spot, r.strike, ttm, r.put.iv / 100, false);
+    }
+  });
+
+  // Apply strike limit
+  let rows = allRows;
+  if (strikeLimit && strikeLimit !== 'all') {
+    const n = parseInt(strikeLimit);
+    let atmIdx = 0, minDist = Infinity;
+    allRows.forEach((r, i) => { const d = Math.abs(r.strike - spot); if (d < minDist) { minDist = d; atmIdx = i; } });
+    const half = n / 2;
+    const start = Math.max(0, Math.round(atmIdx - half));
+    const end = Math.min(allRows.length, Math.round(atmIdx + half));
+    rows = allRows.slice(start, end);
+  }
+
+  let atmIdx = 0, minDist = Infinity;
+  rows.forEach((r, i) => { const d = Math.abs(r.strike - spot); if (d < minDist) { minDist = d; atmIdx = i; } });
+
+  let h = '<table><thead><tr>';
+  h += th('Delta', 'call-section') + th('IV %', 'call-section') + th('Bid', 'call-section') + th('Ask', 'call-section') + th('Last', 'call-section') + th('Vol', 'call-section') + th('OI', 'call-section');
+  h += th('Strike', 'strike-col');
+  h += th('Vol', 'put-section') + th('OI', 'put-section') + th('Bid', 'put-section') + th('Ask', 'put-section') + th('Last', 'put-section') + th('IV %', 'put-section') + th('Delta', 'put-section');
+  h += '</tr></thead><tbody>';
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const isATM = i === atmIdx;
+    const cls = isATM ? ' class="atm-row"' : '';
+    h += '<tr' + cls + '>';
+    const c = r.call || {};
+    const p = r.put || {};
+    const cCls = c.itm ? ' itm' : '';
+    const pCls = p.itm ? ' itm' : '';
+
+    h += tdDelta(c.delta, cCls);
+    h += td(c.iv, cCls, 2, '%');
+    h += td(c.bid, cCls, 2);
+    h += td(c.ask, cCls, 2);
+    h += td(c.last, cCls, 2);
+    h += td(c.volume, cCls, 0);
+    h += td(c.oi, cCls, 0);
+    h += '<td class="strike-col">' + fmtNum(r.strike, 0) + '</td>';
+    h += td(p.volume, pCls, 0);
+    h += td(p.oi, pCls, 0);
+    h += td(p.bid, pCls, 2);
+    h += td(p.ask, pCls, 2);
+    h += td(p.last, pCls, 2);
+    h += td(p.iv, pCls, 2, '%');
+    h += tdDelta(p.delta, pCls);
+    h += '</tr>';
+  }
+
+  h += '</tbody></table>';
+  content.innerHTML = h;
+}
+
+// ── Refresh trigger ──
+async function triggerRefresh() {
+  if (!WORKER_URL) {
+    alert('Refresh not configured yet. Set WORKER_URL in config.js. See README for setup instructions.');
+    return;
+  }
+  refreshBtn.classList.add('loading');
+  refreshBtn.disabled = true;
+  refreshStatus.textContent = 'Triggering data refresh...';
+  refreshStatus.className = 'refresh-status pending';
+
+  try {
+    const r = await fetch(WORKER_URL, { method: 'POST' });
+    const data = await r.json();
+    if (r.ok && data.status === 'triggered') {
+      refreshStatus.textContent = 'Refresh triggered. Data will update in ~2-3 minutes.';
+      refreshStatus.className = 'refresh-status pending';
+      // Poll for new data after a delay
+      setTimeout(pollForUpdate, 90000);
+    } else {
+      refreshStatus.textContent = 'Error: ' + (data.error || 'Unknown error');
+      refreshStatus.className = 'refresh-status error';
+    }
+  } catch(e) {
+    refreshStatus.textContent = 'Error contacting refresh endpoint: ' + e.message;
+    refreshStatus.className = 'refresh-status error';
+  } finally {
+    refreshBtn.classList.remove('loading');
+    refreshBtn.disabled = false;
+  }
+}
+
+async function pollForUpdate() {
+  try {
+    const r = await fetch('data/expirations.json?' + Date.now());
+    if (!r.ok) return;
+    const data = await r.json();
+    const fetchedAt = new Date(data.fetched_at);
+    // Only reload if data is newer than 2 minutes ago
+    if (Date.now() - fetchedAt.getTime() < 300000) {
+      chainCache = {};
+      allExpirations = data.expirations || [];
+      populateExpirations(allExpirations);
+      refreshStatus.textContent = 'Data updated: ' + fetchedAt.toLocaleString();
+      refreshStatus.className = 'refresh-status ok';
+      loadChain();
+    } else {
+      refreshStatus.textContent = 'Still waiting for update...';
+      refreshStatus.className = 'refresh-status pending';
+      setTimeout(pollForUpdate, 60000);
+    }
+  } catch(e) {
+    // Ignore poll errors
+  }
+}
+
+// ── Helpers ──
+function th(text, cls) { return '<th class="' + cls + '">' + text + '</th>'; }
+
+function td(val, extraCls, decimals, suffix) {
+  if (val == null || val !== val) return '<td class="empty' + (extraCls||'') + '">-</td>';
+  let s = fmtNum(val, decimals);
+  if (suffix) s += suffix;
+  return '<td class="' + (extraCls||'') + '">' + s + '</td>';
+}
+
+function tdDelta(val, extraCls) {
+  if (val == null || val !== val) return '<td class="empty' + (extraCls||'') + '">-</td>';
+  const colorCls = val >= 0 ? ' pos-delta' : ' neg-delta';
+  return '<td class="' + (extraCls||'') + colorCls + '">' + val.toFixed(4) + '</td>';
+}
+
+function fmtNum(val, decimals) {
+  if (val == null || val !== val) return '-';
+  if (decimals === 0) return Number(val).toLocaleString('en-US', {maximumFractionDigits: 0});
+  return Number(val).toLocaleString('en-US', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
+}
+
+function fmtExp(d) {
+  const dt = new Date(d + 'T17:00:00');
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffMs = new Date(d + 'T00:00:00') - today;
+  const dte = Math.round(diffMs / 86400000);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const label = days[dt.getDay()] + ' ' + months[dt.getMonth()] + ' ' + String(dt.getDate()).padStart(2,'0');
+  if (dte === 0) return label + '  0DTE';
+  if (dte === 1) return label + '  1DTE';
+  return label + '  ' + dte + 'DTE';
+}
+
+function round4(v) { return Math.round(v * 10000) / 10000; }
+</script>
+</body>
 </html>
