@@ -1,1 +1,54 @@
-# placeholder - step 4 will fill this in
+name: Update SPX Options Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      expirations:
+        description: 'Number of nearest expirations to fetch (0 = all)'
+        required: false
+        default: '20'
+  schedule:
+    # 10:15 AM and 2:15 PM ET (14:15 and 18:15 UTC) on weekdays
+    - cron: '15 14 * * 1-5'
+    - cron: '15 18 * * 1-5'
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch options data
+        run: |
+          EXP_COUNT="${{ github.event.inputs.expirations || '20' }}"
+          if [ "$EXP_COUNT" = "0" ]; then
+            python3 fetch_data.py
+          else
+            python3 fetch_data.py --nearest "$EXP_COUNT"
+          fi
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "data: update SPX options $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi
