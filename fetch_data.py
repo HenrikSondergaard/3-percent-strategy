@@ -114,7 +114,7 @@ def fetch_chain(ticker, expiration: str) -> dict:
         p = row_to_dict(puts, strike, spot, ttm, is_call=False)
         rows.append({"strike": strike, "call": c, "put": p})
 
-    return {"spot": spot, "expiration": expiration, "ttm": round(ttm, 6), "rows": rows}
+    return {"fetched_at": datetime.now(timezone.utc).isoformat(), "spot": spot, "expiration": expiration, "ttm": round(ttm, 6), "rows": rows}
 
 
 def approx_spot(calls, puts):
