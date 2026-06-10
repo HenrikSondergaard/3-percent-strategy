@@ -2,8 +2,9 @@
 """Fetch SPX options data via yfinance and write JSON files for GitHub Pages.
 
 Usage:
-    python3 fetch_data.py              # fetch all expirations
-    python3 fetch_data.py --nearest 5  # fetch only nearest 5 expirations
+    python3 fetch_data.py                        # fetch all expirations
+    python3 fetch_data.py --nearest 5            # fetch only nearest 5 expirations
+    python3 fetch_data.py --expiration 2026-06-12  # fetch only one expiration
 
 Outputs:
     data/expirations.json          - list of expiration dates + timestamp
@@ -27,30 +28,44 @@ THROTTLE_SECONDS = 1.5  # delay between chain fetches to avoid Yahoo throttling
 
 def main():
     max_expirations = None
+    single_expiration = None
     if "--nearest" in sys.argv:
         idx = sys.argv.index("--nearest")
         max_expirations = int(sys.argv[idx + 1])
+    if "--expiration" in sys.argv:
+        idx = sys.argv.index("--expiration")
+        single_expiration = sys.argv[idx + 1]
 
     DATA_DIR.mkdir(exist_ok=True)
 
     print(f"Fetching expirations for {TICKER}...")
     t = yf.Ticker(TICKER)
-    expirations = list(t.options or [])
-    print(f"  Found {len(expirations)} expirations")
+    all_expirations = list(t.options or [])
+    print(f"  Found {len(all_expirations)} expirations")
 
-    if max_expirations:
-        expirations = expirations[:max_expirations]
-        print(f"  Limited to nearest {max_expirations}")
-
-    # Write expirations.json
+    # Always update expirations.json with the full list
     exp_data = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "expirations": expirations,
+        "expirations": all_expirations,
     }
     exp_path = DATA_DIR / "expirations.json"
     with open(exp_path, "w") as f:
         json.dump(exp_data, f)
     print(f"  Wrote {exp_path}")
+
+    if single_expiration:
+        # Fetch only the requested expiration
+        if single_expiration not in all_expirations:
+            print(f"  ERROR: {single_expiration} is not a valid expiration")
+            print(f"  Available: {all_expirations[:5]} ...")
+            sys.exit(1)
+        expirations = [single_expiration]
+        print(f"  Single expiry mode: {single_expiration}")
+    elif max_expirations:
+        expirations = all_expirations[:max_expirations]
+        print(f"  Limited to nearest {max_expirations}")
+    else:
+        expirations = all_expirations
 
     # Fetch chains
     for i, exp in enumerate(expirations):
@@ -68,13 +83,14 @@ def main():
         if i < len(expirations) - 1:
             time.sleep(THROTTLE_SECONDS)
 
-    # Clean up chain files for expirations no longer available
-    existing = set(expirations)
-    for p in DATA_DIR.glob("chain_*.json"):
-        exp_from_file = p.stem.replace("chain_", "")
-        if exp_from_file not in existing:
-            p.unlink()
-            print(f"  Removed stale {p.name}")
+    # Clean up chain files for expirations no longer available (full runs only)
+    if not single_expiration and not max_expirations:
+        existing = set(all_expirations)
+        for p in DATA_DIR.glob("chain_*.json"):
+            exp_from_file = p.stem.replace("chain_", "")
+            if exp_from_file not in existing:
+                p.unlink()
+                print(f"  Removed stale {p.name}")
 
     print("Done.")
 

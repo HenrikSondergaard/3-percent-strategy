@@ -7,6 +7,10 @@ on:
         description: 'Number of nearest expirations to fetch (0 = all)'
         required: false
         default: '20'
+      expiration:
+        description: 'Single expiration date (YYYY-MM-DD). Overrides expirations count.'
+        required: false
+        default: ''
   schedule:
     # 10:15 AM and 2:15 PM ET (14:15 and 18:15 UTC) on weekdays
     - cron: '15 14 * * 1-5'
@@ -34,8 +38,11 @@ jobs:
 
       - name: Fetch options data
         run: |
+          SINGLE_EXP="${{ github.event.inputs.expiration }}"
           EXP_COUNT="${{ github.event.inputs.expirations || '20' }}"
-          if [ "$EXP_COUNT" = "0" ]; then
+          if [ -n "$SINGLE_EXP" ]; then
+            python3 fetch_data.py --expiration "$SINGLE_EXP"
+          elif [ "$EXP_COUNT" = "0" ]; then
             python3 fetch_data.py
           else
             python3 fetch_data.py --nearest "$EXP_COUNT"

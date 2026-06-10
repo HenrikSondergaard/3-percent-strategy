@@ -340,24 +340,34 @@ function renderTable(data, strikeLimit) {
 }
 
 // ── Refresh trigger ──
+let pollTimer = null;
+let refreshTriggeredAt = 0;
+
 async function triggerRefresh() {
   if (!WORKER_URL) {
     alert('Refresh not configured yet. Set WORKER_URL in config.js. See README for setup instructions.');
     return;
   }
+  // Clear any previous polling
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+
   refreshBtn.classList.add('loading');
   refreshBtn.disabled = true;
   refreshStatus.textContent = 'Triggering data refresh...';
   refreshStatus.className = 'refresh-status pending';
 
+  const selectedExp = expSel.value;
+
   try {
-    const r = await fetch(WORKER_URL, { method: 'POST' });
+    const body = selectedExp ? JSON.stringify({ expiration: selectedExp }) : '{}';
+    const r = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
     const data = await r.json();
     if (r.ok && data.status === 'triggered') {
-      refreshStatus.textContent = 'Refresh triggered. Data will update in ~2-3 minutes.';
+      refreshTriggeredAt = Date.now();
+      refreshStatus.textContent = data.message || 'Refresh triggered. Waiting for update...';
       refreshStatus.className = 'refresh-status pending';
-      // Poll for new data after a delay
-      setTimeout(pollForUpdate, 90000);
+      // Start polling after 30s
+      pollTimer = setTimeout(pollForUpdate, 30000);
     } else {
       refreshStatus.textContent = 'Error: ' + (data.error || 'Unknown error');
       refreshStatus.className = 'refresh-status error';
@@ -372,26 +382,55 @@ async function triggerRefresh() {
 }
 
 async function pollForUpdate() {
+  const MAX_POLL_MS = 5 * 60 * 1000; // give up after 5 minutes
+  const POLL_INTERVAL = 30000; // check every 30s
+
+  if (Date.now() - refreshTriggeredAt > MAX_POLL_MS) {
+    refreshStatus.textContent = 'Timed out waiting for update. Try again.';
+    refreshStatus.className = 'refresh-status error';
+    pollTimer = null;
+    return;
+  }
+
   try {
-    const r = await fetch('data/expirations.json?' + Date.now());
-    if (!r.ok) return;
+    const targetExp = expSel.value;
+    const url = targetExp
+      ? 'data/chain_' + targetExp + '.json?' + Date.now()
+      : 'data/expirations.json?' + Date.now();
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('not found');
     const data = await r.json();
-    const fetchedAt = new Date(data.fetched_at);
-    // Only reload if data is newer than 2 minutes ago
-    if (Date.now() - fetchedAt.getTime() < 300000) {
-      chainCache = {};
-      allExpirations = data.expirations || [];
-      populateExpirations(allExpirations);
-      refreshStatus.textContent = 'Data updated: ' + fetchedAt.toLocaleString();
-      refreshStatus.className = 'refresh-status ok';
-      loadChain();
-    } else {
-      refreshStatus.textContent = 'Still waiting for update...';
-      refreshStatus.className = 'refresh-status pending';
-      setTimeout(pollForUpdate, 60000);
+
+    // Check if data is newer than when we triggered the refresh
+    if (data.fetched_at || data.spot) {
+      const ts = data.fetched_at ? new Date(data.fetched_at).getTime() : 0;
+      if (ts > refreshTriggeredAt || Date.now() - ts < 120000) {
+        // Fresh data! Reload everything
+        chainCache = {};
+        // Also reload expirations
+        const expR = await fetch('data/expirations.json?' + Date.now());
+        if (expR.ok) {
+          const expData = await expR.json();
+          allExpirations = expData.expirations || [];
+          populateExpirations(allExpirations);
+        }
+        refreshStatus.textContent = 'Data updated!';
+        refreshStatus.className = 'refresh-status ok';
+        loadChain();
+        pollTimer = null;
+        return;
+      }
     }
+
+    // Not yet, keep polling
+    refreshStatus.textContent = 'Waiting for update...';
+    refreshStatus.className = 'refresh-status pending';
+    pollTimer = setTimeout(pollForUpdate, POLL_INTERVAL);
   } catch(e) {
-    // Ignore poll errors
+    // File might not exist yet, keep polling
+    refreshStatus.textContent = 'Waiting for update...';
+    refreshStatus.className = 'refresh-status pending';
+    pollTimer = setTimeout(pollForUpdate, POLL_INTERVAL);
   }
 }
 

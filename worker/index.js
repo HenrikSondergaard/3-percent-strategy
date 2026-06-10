@@ -30,6 +30,18 @@ async function handleRequest(request) {
   const workflowId = "update-data.yml";
   const url = `https://api.github.com/repos/${repo}/actions/workflows/${workflowId}/dispatches`;
 
+  // Parse optional expiration from request body
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const expiration = body.expiration || "";
+
+  const inputs = {};
+  if (expiration) {
+    inputs.expiration = expiration;
+  } else {
+    inputs.expirations = "20";
+  }
+
   try {
     const resp = await fetch(url, {
       method: "POST",
@@ -41,14 +53,15 @@ async function handleRequest(request) {
       },
       body: JSON.stringify({
         ref: "main",
-        inputs: {
-          expirations: "20",
-        },
+        inputs: inputs,
       }),
     });
 
     if (resp.status === 204) {
-      return jsonResponse({ status: "triggered", message: "Workflow dispatched. Data will update in ~2-3 minutes." });
+      const msg = expiration
+        ? `Workflow dispatched for ${expiration}. Data will update in ~1 minute.`
+        : "Workflow dispatched. Data will update in ~2-3 minutes.";
+      return jsonResponse({ status: "triggered", expiration: expiration || null, message: msg });
     }
 
     // Rate limited or other error
