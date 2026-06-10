@@ -23,14 +23,6 @@ A static, serverless SPX options chain viewer. Browse calls/puts across all expi
                       triggers refresh via Worker
 ```
 
-**Cost: $0/month.** Everything runs on free tiers.
-
-| Component | Service | Purpose |
-|---|---|---|
-| Frontend | GitHub Pages | Static HTML/JS/CSS + JSON data files |
-| Data pipeline | GitHub Actions | Scheduled + on-demand SPX data fetch |
-| Refresh proxy | Cloudflare Workers | Securely triggers Actions (holds GitHub PAT) |
-
 ## Features
 
 - Full SPX options chain (calls + puts) across all available expirations
@@ -70,13 +62,13 @@ Columns available per contract: bid, ask, last, volume, open interest, implied v
 
 ### Prerequisites
 
-- GitHub account (free)
-- Cloudflare account (free, no credit card)
+- GitHub account
+- Cloudflare account
 - One GitHub Personal Access Token with `repo` scope
 
 ### Deploy
 
-1. **Fork or clone this repo** (must be public for free GitHub Pages)
+1. **Fork or clone this repo**
 
 2. **Enable GitHub Pages**: Settings → Pages → Source: `main` branch, `/ (root)`
 
