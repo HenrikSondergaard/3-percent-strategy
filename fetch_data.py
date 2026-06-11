@@ -26,6 +26,33 @@ DATA_DIR = Path(__file__).parent / "data"
 THROTTLE_SECONDS = 1.5  # delay between chain fetches to avoid Yahoo throttling
 
 
+def fetch_vix():
+    """Fetch current VIX level and write data/vix.json."""
+    print("Fetching VIX...")
+    vix_ticker = yf.Ticker("^VIX")
+    hist = vix_ticker.history(period="5d")
+    if hist.empty:
+        print("  WARNING: Could not fetch VIX data")
+        return None
+    latest = hist.iloc[-1]
+    vix_close = round(float(latest["Close"]), 2)
+    # Calculate % change from previous close if available
+    vix_change = None
+    if len(hist) >= 2:
+        prev_close = float(hist.iloc[-2]["Close"])
+        vix_change = round((vix_close - prev_close) / prev_close * 100, 2)
+    vix_data = {
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "vix": vix_close,
+        "vix_change_pct": vix_change,
+    }
+    vix_path = DATA_DIR / "vix.json"
+    with open(vix_path, "w") as f:
+        json.dump(vix_data, f)
+    print(f"  VIX: {vix_close} (change: {vix_change}%) -> {vix_path}")
+    return vix_close
+
+
 def main():
     max_expirations = None
     single_expiration = None
@@ -52,6 +79,9 @@ def main():
     with open(exp_path, "w") as f:
         json.dump(exp_data, f)
     print(f"  Wrote {exp_path}")
+
+    # Fetch VIX (always, regardless of mode)
+    fetch_vix()
 
     if single_expiration:
         # Fetch only the requested expiration

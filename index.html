@@ -103,6 +103,133 @@ footer {
   padding: 8px 24px; font-size: 11px; color: #484f58;
   display: flex; justify-content: space-between;
 }
+/* ── Strategy Panel ── */
+.strategy-panel {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 16px 24px;
+}
+.strategy-panel h2 {
+  font-size: 15px; color: #e6edf3; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.strategy-panel h2 .subtitle { font-weight: 400; color: #8b949e; font-size: 12px; }
+.strat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.strat-card {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+  padding: 14px; font-size: 12px;
+}
+.strat-card.full-width { grid-column: 1 / -1; }
+.strat-card h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: #8b949e; margin-bottom: 10px; padding-bottom: 6px;
+  border-bottom: 1px solid #21262d;
+}
+.check-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0; font-size: 12px;
+}
+.check-row .icon { width: 16px; text-align: center; font-size: 13px; }
+.check-row.green .icon { color: #3fb950; }
+.check-row.red .icon { color: #f85149; }
+.check-row.yellow .icon { color: #d29922; }
+.check-row .label { color: #c9d1d9; }
+.check-row .detail { color: #8b949e; margin-left: auto; font-size: 11px; }
+.toggle-row {
+  display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px;
+}
+.toggle-row label {
+  display: flex; align-items: center; gap: 5px; font-size: 11px;
+  color: #c9d1d9; cursor: pointer; padding: 4px 8px;
+  background: #21262d; border: 1px solid #30363d; border-radius: 4px;
+}
+.toggle-row label:hover { border-color: #58a6ff; }
+.toggle-row input[type="checkbox"] { accent-color: #f85149; }
+.toggle-row input[type="number"] {
+  width: 100px; background: #21262d; color: #c9d1d9;
+  border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px;
+  font-size: 12px; font-family: inherit;
+}
+.wem-row {
+  display: flex; justify-content: space-between; padding: 3px 0;
+  font-size: 12px;
+}
+.wem-row .wl { color: #8b949e; }
+.wem-row .wv { color: #e6edf3; font-weight: 600; font-family: 'SF Mono', 'Fira Code', monospace; }
+.wem-bar {
+  height: 20px; background: #21262d; border-radius: 4px;
+  position: relative; margin: 8px 0 4px; overflow: hidden;
+}
+.wem-bar .fill {
+  position: absolute; top: 0; height: 100%;
+  background: rgba(88,166,255,0.15); border-left: 2px solid #58a6ff;
+  border-right: 2px solid #58a6ff;
+}
+.wem-bar .spot-marker {
+  position: absolute; top: 0; height: 100%; width: 2px;
+  background: #3fb950;
+}
+.scanner-tables { display: flex; gap: 12px; flex-wrap: wrap; }
+.scanner-half { flex: 1; min-width: 320px; }
+.scanner-half h4 {
+  font-size: 11px; margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.scanner-half h4.bps { color: #3fb950; }
+.scanner-half h4.bcs { color: #f85149; }
+.scan-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.scan-tbl th {
+  text-align: right; padding: 4px 6px; color: #8b949e;
+  font-weight: 600; font-size: 10px; text-transform: uppercase;
+  border-bottom: 1px solid #21262d; white-space: nowrap;
+}
+.scan-tbl td {
+  padding: 4px 6px; text-align: right; white-space: nowrap;
+  border-bottom: 1px solid #161b22; cursor: pointer;
+}
+.scan-tbl tr:hover td { background: #161b22; }
+.scan-tbl tr.selected td { background: rgba(88,166,255,0.12); outline: 1px solid #58a6ff; }
+.scan-tbl tr.target td { background: rgba(63,185,80,0.08); }
+.scan-tbl tr.secondary td { background: rgba(88,166,255,0.06); }
+.summary-block {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+  padding: 12px 16px; font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px; line-height: 1.6; color: #c9d1d9;
+  white-space: pre; overflow-x: auto; cursor: text;
+  user-select: all; max-height: 400px;
+}
+.summary-placeholder {
+  color: #484f58; font-style: italic; font-family: inherit;
+  font-size: 12px; padding: 20px; text-align: center;
+}
+.account-row {
+  display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
+}
+.account-row label { font-size: 11px; color: #8b949e; white-space: nowrap; }
+.account-row input {
+  width: 120px; background: #21262d; color: #c9d1d9;
+  border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px;
+  font-size: 12px; font-family: inherit;
+}
+.account-row input:focus { outline: none; border-color: #58a6ff; }
+.risk-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px;
+}
+.risk-box {
+  background: #21262d; border-radius: 4px; padding: 8px; text-align: center;
+}
+.risk-box .rl { font-size: 10px; color: #8b949e; text-transform: uppercase; }
+.risk-box .rv { font-size: 14px; font-weight: 700; color: #e6edf3; margin-top: 2px; }
+.risk-box .rv.warn { color: #d29922; }
+.risk-box .rv.danger { color: #f85149; }
+.chain-section-header {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 8px 24px; font-size: 12px; color: #8b949e;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+}
 </style>
 </head>
 <body>
@@ -148,6 +275,49 @@ footer {
   <span>Delta: Black-Scholes (r = 4.5%)</span>
   <span id="refreshStatus" class="refresh-status"></span>
 </div>
+
+<!-- ── Strategy Panel ── -->
+<div class="strategy-panel" id="strategyPanel">
+  <h2>Strategy Dashboard <span class="subtitle">Peter's 10%/wk — Iron Condor Planner</span></h2>
+
+  <div class="strat-grid">
+    <!-- Go / No-Go -->
+    <div class="strat-card" id="goNoGoCard">
+      <h3>Go / No-Go Checklist</h3>
+      <div id="goNoGoContent"><span style="color:#484f58">Loading...</span></div>
+      <div class="toggle-row" id="eventToggles">
+        <label><input type="checkbox" id="chkCPI"> CPI this week</label>
+        <label><input type="checkbox" id="chkFOMC"> FOMC this week</label>
+        <label><input type="checkbox" id="chkNFP"> NFP this week</label>
+      </div>
+    </div>
+
+    <!-- WEM -->
+    <div class="strat-card" id="wemCard">
+      <h3>Weekly Expected Move</h3>
+      <div id="wemContent"><span style="color:#484f58">Loading...</span></div>
+    </div>
+
+    <!-- Spread Scanner -->
+    <div class="strat-card full-width" id="scannerCard">
+      <h3>Credit Spread Scanner ($10-wide) <span style="font-weight:400;color:#8b949e"> — click a row to select for Iron Condor</span></h3>
+      <div id="scannerContent"><span style="color:#484f58">Loading...</span></div>
+    </div>
+
+    <!-- Trade Summary -->
+    <div class="strat-card full-width" id="summaryCard">
+      <h3>Trade Setup Summary</h3>
+      <div class="account-row">
+        <label>Account size $</label>
+        <input type="number" id="accountSize" placeholder="100000" min="0">
+      </div>
+      <div class="risk-grid" id="riskGrid" style="display:none"></div>
+      <div id="summaryContent"><div class="summary-placeholder">Select one BPS and one BCS from the scanner above to generate setup.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="chain-section-header">Full Options Chain</div>
 
 <div class="table-wrap" id="tableWrap">
   <div id="content">
@@ -196,6 +366,12 @@ function erf(x) {
 let allExpirations = [];
 let chainCache = {};  // expiration -> chain data
 
+// ── Strategy state ──
+let vixData = null;   // { vix, vix_change_pct }
+let currentChainData = null;
+let selectedBPS = null;  // { sellStrike, buyStrike, credit, ... }
+let selectedBCS = null;
+
 // ── Load config then init ──
 (async () => {
   try {
@@ -217,6 +393,11 @@ let chainCache = {};  // expiration -> chain data
     refreshStatus.textContent = fetchedAt ? 'Data: ' + new Date(fetchedAt).toLocaleString() : '';
     refreshStatus.className = 'refresh-status ok';
     goBtn.disabled = false;
+    // Load VIX data
+    try {
+      const vr = await fetch('data/vix.json');
+      if (vr.ok) vixData = await vr.json();
+    } catch(e) {}
     loadChain();
   } catch(e) {
     content.innerHTML = '<div class="error">No data yet. Click "Refresh Data" to fetch options chain from Yahoo Finance.</div>';
@@ -241,6 +422,10 @@ goBtn.onclick = loadChain;
 expSel.onchange = loadChain;
 strikeSel.onchange = loadChain;
 refreshBtn.onclick = triggerRefresh;
+$('chkCPI').onchange = renderGoNoGo;
+$('chkFOMC').onchange = renderGoNoGo;
+$('chkNFP').onchange = renderGoNoGo;
+$('accountSize').oninput = renderSummary;
 
 async function loadChain() {
   const exp = expSel.value;
@@ -261,7 +446,9 @@ async function loadChain() {
     }
 
     spotEl.textContent = data.spot ? fmtNum(data.spot, 2) : '--';
+    currentChainData = data;
     renderTable(data, strikes);
+    renderStrategy(data);
     const dte = Math.round((new Date(exp + 'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
     footerInfo.textContent = data.rows.length + ' strikes | ' + fmtExp(data.expiration) + ' | DTE: ' + dte;
   } catch(e) {
@@ -432,6 +619,321 @@ async function pollForUpdate() {
     refreshStatus.className = 'refresh-status pending';
     pollTimer = setTimeout(pollForUpdate, POLL_INTERVAL);
   }
+}
+
+// ── Strategy Functions ──
+
+function renderStrategy(data) {
+  selectedBPS = null;
+  selectedBCS = null;
+  renderGoNoGo();
+  renderWEM(data);
+  renderScanner(data);
+  renderSummary();
+}
+
+function renderGoNoGo() {
+  const el = $('goNoGoContent');
+  if (!currentChainData) { el.innerHTML = '<span style="color:#484f58">No chain data</span>'; return; }
+  const rows = [];
+  // VIX
+  const vix = vixData ? vixData.vix : null;
+  if (vix == null) {
+    rows.push({ cls: 'yellow', icon: '?', label: 'VIX', detail: 'No VIX data (refresh needed)' });
+  } else if (vix < 13) {
+    rows.push({ cls: 'red', icon: '!', label: 'VIX ' + fmtNum(vix,2), detail: 'Extremely low — accept lower premium or wait' });
+  } else if (vix < 16) {
+    rows.push({ cls: 'red', icon: '!', label: 'VIX ' + fmtNum(vix,2), detail: 'Too low for Iron Condor — BPS only' });
+  } else if (vix <= 25) {
+    rows.push({ cls: 'green', icon: '\u2713', label: 'VIX ' + fmtNum(vix,2), detail: 'OK for Iron Condor' });
+  } else {
+    rows.push({ cls: 'yellow', icon: '~', label: 'VIX ' + fmtNum(vix,2), detail: 'High vol — wider spreads possible' });
+  }
+  // DTE
+  const exp = currentChainData.expiration;
+  const dte = Math.round((new Date(exp+'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
+  if (dte >= 2 && dte <= 5) {
+    rows.push({ cls: 'green', icon: '\u2713', label: 'DTE: ' + dte, detail: 'Good for weekly' });
+  } else if (dte >= 1) {
+    rows.push({ cls: 'yellow', icon: '~', label: 'DTE: ' + dte, detail: 'Short week' });
+  } else {
+    rows.push({ cls: 'red', icon: '!', label: 'DTE: ' + dte, detail: 'Too short' });
+  }
+  // Economic events
+  const cpi = $('chkCPI').checked, fomc = $('chkFOMC').checked, nfp = $('chkNFP').checked;
+  if (cpi || fomc) {
+    rows.push({ cls: 'red', icon: 'X', label: (cpi?'CPI ':'')+(fomc?'FOMC':''), detail: 'NO Iron Condor — single spread only' });
+  } else {
+    rows.push({ cls: 'green', icon: '\u2713', label: 'No CPI/FOMC', detail: 'Iron Condor OK' });
+  }
+  if (nfp) {
+    rows.push({ cls: 'yellow', icon: '~', label: 'NFP this week', detail: 'Require premium >$0.55 or +20% distance' });
+  }
+  el.innerHTML = rows.map(r => '<div class="check-row '+r.cls+'"><span class="icon">'+r.icon+'</span><span class="label">'+r.label+'</span><span class="detail">'+r.detail+'</span></div>').join('');
+}
+
+function renderWEM(data) {
+  const el = $('wemContent');
+  if (!data || !data.rows) { el.innerHTML = '<span style="color:#484f58">No data</span>'; return; }
+  const spot = data.spot, ttm = data.ttm;
+  if (!spot || !ttm) { el.innerHTML = '<span style="color:#484f58">Missing spot/ttm</span>'; return; }
+  const dte = Math.max(1, Math.round(ttm * 365.25));
+  // Find strikes closest to |delta| = 0.15
+  let bestCall = null, bestPut = null, bestCDist = 999, bestPDist = 999;
+  data.rows.forEach(r => {
+    if (r.call && r.call.delta != null && r.call.delta > 0) {
+      const d = Math.abs(r.call.delta - 0.15);
+      if (d < bestCDist) { bestCDist = d; bestCall = r; }
+    }
+    if (r.put && r.put.delta != null) {
+      const d = Math.abs(Math.abs(r.put.delta) - 0.15);
+      if (d < bestPDist) { bestPDist = d; bestPut = r; }
+    }
+  });
+  let wem = null, avgIV = null;
+  if (bestCall && bestPut && bestCall.call.iv != null && bestPut.put.iv != null) {
+    avgIV = ((bestCall.call.iv + bestPut.put.iv) / 2) / 100;
+    wem = spot * avgIV * Math.sqrt(dte / 252);
+  }
+  if (wem == null) { el.innerHTML = '<span style="color:#484f58">Cannot calculate WEM</span>'; return; }
+  const upper = spot + wem, lower = spot - wem, wemPct = (wem / spot * 100);
+  let h = '';
+  h += wemRow('Spot', fmtNum(spot, 2));
+  h += wemRow('DTE', dte);
+  h += wemRow('15\u0394 IV (avg)', fmtNum(avgIV*100, 1) + '%');
+  h += wemRow('WEM', '\u00B1' + fmtNum(wem, 1) + ' pts (' + fmtNum(wemPct, 2) + '%)');
+  h += wemRow('Upper', fmtNum(upper, 1));
+  h += wemRow('Lower', fmtNum(lower, 1));
+  // Visual bar
+  const range = wem * 3;
+  const leftPct = ((spot - lower) / (range * 2)) * 100;
+  const widthPct = ((upper - lower) / (range * 2)) * 100;
+  const spotPct = 50;
+  h += '<div class="wem-bar"><div class="fill" style="left:'+leftPct+'%;width:'+widthPct+'%"></div>';
+  h += '<div class="spot-marker" style="left:'+spotPct+'%"></div></div>';
+  // Store WEM for scanner
+  currentChainData._wem = wem;
+  currentChainData._wemUpper = upper;
+  currentChainData._wemLower = lower;
+  el.innerHTML = h;
+}
+
+function wemRow(label, value) {
+  return '<div class="wem-row"><span class="wl">'+label+'</span><span class="wv">'+value+'</span></div>';
+}
+
+function renderScanner(data) {
+  const el = $('scannerContent');
+  if (!data || !data.rows || data.rows.length < 2) {
+    el.innerHTML = '<span style="color:#484f58">Not enough data</span>'; return;
+  }
+  const spot = data.spot;
+  const wemL = data._wemLower || 0, wemU = data._wemUpper || 999999;
+  const strikes = data.rows.map(r => r.strike);
+  const byStrike = {};
+  data.rows.forEach(r => { byStrike[r.strike] = r; });
+  const bps = [], bcs = [];
+  for (let i = 0; i < strikes.length; i++) {
+    const K = strikes[i];
+    const Klow = K - 10;
+    // BPS: sell put at K, buy put at K-10. Only OTM: K < spot
+    if (K < spot && byStrike[Klow]) {
+      const sell = byStrike[K].put, buy = byStrike[Klow].put;
+      if (sell && buy && sell.bid != null && buy.ask != null && !sell.itm) {
+        const credit = sell.bid - buy.ask;
+        if (credit > 0.05) {
+          const maxLoss = Math.max(10 - credit, 0);
+          const rr = credit / maxLoss;
+          bps.push({ sellK: K, buyK: Klow, credit, maxLoss, rr,
+            sellDelta: sell.delta, buyDelta: buy.delta,
+            outsideWEM: K < wemL, dist: spot - K });
+        }
+      }
+    }
+    const Khigh = K + 10;
+    // BCS: sell call at K, buy call at K+10. Only OTM: K > spot
+    if (K > spot && byStrike[Khigh]) {
+      const sell = byStrike[K].call, buy = byStrike[Khigh].call;
+      if (sell && buy && sell.bid != null && buy.ask != null && !sell.itm) {
+        const credit = sell.bid - buy.ask;
+        if (credit > 0.05) {
+          const maxLoss = Math.max(10 - credit, 0);
+          const rr = credit / maxLoss;
+          bcs.push({ sellK: K, buyK: Khigh, credit, maxLoss, rr,
+            sellDelta: sell.delta, buyDelta: buy.delta,
+            outsideWEM: K > wemU, dist: K - spot });
+        }
+      }
+    }
+  }
+  bps.sort((a,b) => b.rr - a.rr);
+  bcs.sort((a,b) => b.rr - a.rr);
+  const topBPS = bps.slice(0, 25), topBCS = bcs.slice(0, 25);
+  let h = '<div class="scanner-tables">';
+  h += '<div class="scanner-half"><h4 class="bps">Bull Put Spreads (BPS)</h4>';
+  h += renderScanTable(topBPS, 'bps');
+  h += '</div>';
+  h += '<div class="scanner-half"><h4 class="bcs">Bear Call Spreads (BCS)</h4>';
+  h += renderScanTable(topBCS, 'bcs');
+  h += '</div></div>';
+  el.innerHTML = h;
+}
+
+function renderScanTable(rows, type) {
+  if (!rows.length) return '<div style="color:#484f58;font-size:11px">No spreads found</div>';
+  let h = '<table class="scan-tbl"><tr>';
+  h += '<th>Sell</th><th>Buy</th><th>Credit</th><th>MaxLoss</th><th>R/R</th><th>\u0394</th><th>Dist</th><th>WEM?</th>';
+  h += '</tr>';
+  rows.forEach((r, i) => {
+    const tgt = r.credit >= 0.55 && r.credit <= 0.65;
+    const sec = r.credit >= 0.45 && r.credit < 0.55;
+    const sel = (type==='bps' && selectedBPS && selectedBPS.sellK===r.sellK)
+             || (type==='bcs' && selectedBCS && selectedBCS.sellK===r.sellK);
+    const cls = sel ? ' selected' : tgt ? ' target' : sec ? ' secondary' : '';
+    h += '<tr class="'+cls+'" onclick="selectSpread(\''+type+'\','+i+',this)" data-type="'+type+'" data-idx="'+i+'">';
+    h += '<td>'+r.sellK+'</td><td>'+r.buyK+'</td>';
+    h += '<td>$'+r.credit.toFixed(2)+'</td>';
+    h += '<td>$'+r.maxLoss.toFixed(2)+'</td>';
+    h += '<td>'+r.rr.toFixed(1)+':1</td>';
+    h += '<td>'+(r.sellDelta!=null?r.sellDelta.toFixed(2):'-')+'</td>';
+    h += '<td>'+Math.round(r.dist)+'</td>';
+    h += '<td>'+(r.outsideWEM?'Yes':'No')+'</td>';
+    h += '</tr>';
+  });
+  h += '</table>';
+  return h;
+}
+
+function selectSpread(type, idx, tr) {
+  const data = currentChainData;
+  if (!data) return;
+  const spot = data.spot;
+  const wemL = data._wemLower || 0, wemU = data._wemUpper || 999999;
+  const strikes = data.rows.map(r => r.strike);
+  const byStrike = {};
+  data.rows.forEach(r => { byStrike[r.strike] = r; });
+  // Rebuild arrays to match indices
+  const arr = [];
+  for (let i = 0; i < strikes.length; i++) {
+    const K = strikes[i];
+    if (type === 'bps') {
+      const Klow = K - 10;
+      if (K < spot && byStrike[Klow] && byStrike[K].put && byStrike[Klow].put
+          && byStrike[K].put.bid != null && byStrike[Klow].put.ask != null
+          && !byStrike[K].put.itm) {
+        const credit = byStrike[K].put.bid - byStrike[Klow].put.ask;
+        if (credit > 0.05) arr.push({ sellK: K, buyK: Klow, credit, maxLoss: Math.max(10-credit,0),
+          rr: credit/Math.max(10-credit,0.01), sellDelta: byStrike[K].put.delta,
+          buyDelta: byStrike[Klow].put.delta, outsideWEM: K < wemL, dist: spot - K,
+          sellBid: byStrike[K].put.bid, buyAsk: byStrike[Klow].put.ask });
+      }
+    } else {
+      const Khigh = K + 10;
+      if (K > spot && byStrike[Khigh] && byStrike[K].call && byStrike[Khigh].call
+          && byStrike[K].call.bid != null && byStrike[Khigh].call.ask != null
+          && !byStrike[K].call.itm) {
+        const credit = byStrike[K].call.bid - byStrike[Khigh].call.ask;
+        if (credit > 0.05) arr.push({ sellK: K, buyK: Khigh, credit, maxLoss: Math.max(10-credit,0),
+          rr: credit/Math.max(10-credit,0.01), sellDelta: byStrike[K].call.delta,
+          buyDelta: byStrike[Khigh].call.delta, outsideWEM: K > wemU, dist: K - spot,
+          sellBid: byStrike[K].call.bid, buyAsk: byStrike[Khigh].call.ask });
+      }
+    }
+  }
+  arr.sort((a,b) => b.rr - a.rr);
+  const s = arr[idx];
+  if (!s) return;
+  // Toggle: clicking same row deselects
+  if (type === 'bps') {
+    selectedBPS = (selectedBPS && selectedBPS.sellK === s.sellK) ? null : s;
+  } else {
+    selectedBCS = (selectedBCS && selectedBCS.sellK === s.sellK) ? null : s;
+  }
+  // Re-render scanner to update highlights, then summary
+  renderScanner(data);
+  renderSummary();
+}
+
+function renderSummary() {
+  const el = $('summaryContent');
+  const rg = $('riskGrid');
+  if (!selectedBPS && !selectedBCS) {
+    rg.style.display = 'none';
+    el.innerHTML = '<div class="summary-placeholder">Select one BPS and one BCS from the scanner above to generate setup.</div>';
+    return;
+  }
+  const d = currentChainData;
+  const vix = vixData ? vixData.vix : null;
+  const exp = d.expiration;
+  const dte = Math.max(1, Math.round((new Date(exp+'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000));
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const expDt = new Date(exp+'T17:00:00');
+  const expLabel = months[expDt.getMonth()] + ' ' + expDt.getDate();
+  let t = '';
+  t += pad('IRON CONDOR SETUP',40) + ' -- Week ending ' + expLabel + '\n';
+  t += '========================================\n';
+  t += pad('SPX Spot:') + fmtNum(d.spot,2) + '  |  VIX: ' + (vix!=null ? fmtNum(vix,2) : 'N/A') + '\n';
+  if (d._wem) {
+    t += pad('WEM:') + '\u00B1' + fmtNum(d._wem,1) + ' pts (' + fmtNum(d._wemLower,0) + ' - ' + fmtNum(d._wemUpper,0) + ')\n';
+  }
+  t += pad('DTE:') + dte + '  |  Expiration: Fri ' + expLabel + '\n';
+  if (selectedBPS) {
+    t += '\nBULL PUT SPREAD' + '\n';
+    t += '  SELL  ' + pad(selectedBPS.sellK + ' PUT',10) + ' @ $' + selectedBPS.sellBid.toFixed(2);
+    t += '  (\u0394: ' + (selectedBPS.sellDelta!=null ? selectedBPS.sellDelta.toFixed(2) : '-') + ')\n';
+    t += '  BUY   ' + pad(selectedBPS.buyK + ' PUT',10) + ' @ $' + selectedBPS.buyAsk.toFixed(2) + '\n';
+    t += '  Credit: $' + selectedBPS.credit.toFixed(2) + '  |  Max Loss: $' + selectedBPS.maxLoss.toFixed(2) + '\n';
+    t += '  R/R: ' + selectedBPS.rr.toFixed(1) + ':1';
+    t += '  |  Breakeven: ' + (selectedBPS.sellK - selectedBPS.credit).toFixed(2) + '\n';
+  }
+  if (selectedBCS) {
+    t += '\nBEAR CALL SPREAD' + '\n';
+    t += '  SELL  ' + pad(selectedBCS.sellK + ' CALL',10) + ' @ $' + selectedBCS.sellBid.toFixed(2);
+    t += '  (\u0394: ' + (selectedBCS.sellDelta!=null ? selectedBCS.sellDelta.toFixed(2) : '-') + ')\n';
+    t += '  BUY   ' + pad(selectedBCS.buyK + ' CALL',10) + ' @ $' + selectedBCS.buyAsk.toFixed(2) + '\n';
+    t += '  Credit: $' + selectedBCS.credit.toFixed(2) + '  |  Max Loss: $' + selectedBCS.maxLoss.toFixed(2) + '\n';
+    t += '  R/R: ' + selectedBCS.rr.toFixed(1) + ':1';
+    t += '  |  Breakeven: ' + (selectedBCS.sellK + selectedBCS.credit).toFixed(2) + '\n';
+  }
+  if (selectedBPS && selectedBCS) {
+    const totCredit = selectedBPS.credit + selectedBCS.credit;
+    const totLoss = selectedBPS.maxLoss + selectedBCS.maxLoss;
+    t += '\n----------------------------------------\n';
+    t += pad('TOTAL CREDIT:') + '$' + totCredit.toFixed(2) + '\n';
+    t += pad('TOTAL MAX LOSS:') + '$' + totLoss.toFixed(2) + '\n';
+    t += '\nPROFIT TARGET: Close at $0.10 per spread (GTC)\n';
+    t += 'STOP LOSS: Close at 3x credit received\n';
+    if (selectedBPS) t += '  BPS stop: $' + (selectedBPS.credit * 3).toFixed(2) + '\n';
+    if (selectedBCS) t += '  BCS stop: $' + (selectedBCS.credit * 3).toFixed(2) + '\n';
+  }
+  el.innerHTML = '<div class="summary-block">' + escHtml(t) + '</div>';
+  // Account risk (SPX multiplier = $100/point)
+  const acctVal = parseFloat($('accountSize').value);
+  if (acctVal > 0 && (selectedBPS || selectedBCS)) {
+    rg.style.display = 'grid';
+    const totCredit = (selectedBPS ? selectedBPS.credit : 0) + (selectedBCS ? selectedBCS.credit : 0);
+    const totLoss = (selectedBPS ? selectedBPS.maxLoss : 0) + (selectedBCS ? selectedBCS.maxLoss : 0);
+    const creditDollar = totCredit * 100; // $100/point for SPX
+    const lossDollar = totLoss * 100;
+    const creditPct = (creditDollar / acctVal * 100);
+    const lossPct = (lossDollar / acctVal * 100);
+    const contracts = Math.floor(80 / lossPct);
+    rg.innerHTML =
+      riskBox('Credit $', '$' + fmtNum(creditDollar, 0), '') +
+      riskBox('Max Loss $', '$' + fmtNum(lossDollar, 0), lossDollar > acctVal*0.3 ? 'danger' : lossDollar > acctVal*0.15 ? 'warn' : '') +
+      riskBox('Credit %', creditPct.toFixed(2) + '%', creditPct > 10 ? 'warn' : '') +
+      riskBox('Max Loss %', lossPct.toFixed(2) + '%', lossPct > 50 ? 'danger' : lossPct > 30 ? 'warn' : '') +
+      riskBox('Contracts (80% rule)', contracts < 1 ? '0' : contracts, '') +
+      riskBox('Actual Loss %', (lossPct * Math.max(contracts,1)).toFixed(1) + '%', lossPct * Math.max(contracts,1) > 80 ? 'danger' : '');
+  } else {
+    rg.style.display = 'none';
+  }
+}
+
+function pad(s, n) { n = n || 16; return (s + '                ').substring(0, n); }
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function riskBox(label, value, cls) {
+  return '<div class="risk-box"><div class="rl">'+label+'</div><div class="rv '+cls+'">'+value+'</div></div>';
 }
 
 // ── Helpers ──
