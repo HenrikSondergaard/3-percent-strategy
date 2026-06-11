@@ -123,12 +123,25 @@ def main():
     print("Done.")
 
 
+def get_spot(ticker) -> float | None:
+    """Get the actual spot price from yfinance (last traded price)."""
+    try:
+        hist = ticker.history(period="1d")
+        if not hist.empty:
+            return round(float(hist["Close"].iloc[-1]), 2)
+    except Exception:
+        pass
+    return None
+
+
 def fetch_chain(ticker, expiration: str) -> dict:
     chain = ticker.option_chain(expiration)
     calls = chain.calls
     puts = chain.puts
 
-    spot = approx_spot(calls, puts)
+    spot = get_spot(ticker)
+    if spot is None:
+        spot = approx_spot(calls, puts)
 
     # Time to expiry in years
     exp_date = datetime.strptime(expiration, "%Y-%m-%d").replace(tzinfo=timezone.utc)
