@@ -206,11 +206,11 @@ def fetch_fomc_events() -> list[dict]:
 
 # ── Main ─────────────────────────────────────────────────────────────
 
-def filter_upcoming(events: list[dict], days_ahead: int = 120) -> list[dict]:
-    """Keep only events from today to N days ahead."""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def filter_upcoming(events: list[dict], days_ahead: int = 120, days_back: int = 7) -> list[dict]:
+    """Keep events from N days back to N days ahead."""
+    start = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
     cutoff = (datetime.now(timezone.utc) + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
-    return [e for e in events if now <= e["date"] <= cutoff]
+    return [e for e in events if start <= e["date"] <= cutoff]
 
 
 def main():

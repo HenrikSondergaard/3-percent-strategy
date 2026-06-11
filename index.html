@@ -711,25 +711,20 @@ function renderGoNoGo() {
   chkCPI.checked = cpiEv.length > 0;
   chkFOMC.checked = fomcEv.length > 0;
   chkNFP.checked = nfpEv.length > 0;
-  const cpi = chkCPI.checked, fomc = chkFOMC.checked, nfp = chkNFP.checked;
-  // Build event detail string
-  const eventDetails = [];
-  if (cpiEv.length) eventDetails.push(...cpiEv.map(e => 'CPI ' + e.date));
-  if (fomcEv.length) eventDetails.push(...fomcEv.map(e => 'FOMC ' + e.date));
-  if (nfpEv.length) eventDetails.push(...nfpEv.map(e => 'NFP ' + e.date));
-  const detailStr = eventDetails.length ? ' (' + eventDetails.join(', ') + ')' : '';
-  // Build label listing which events are present
-  const evPresent = [];
-  if (cpi) evPresent.push('CPI');
-  if (fomc) evPresent.push('FOMC');
-  if (nfp) evPresent.push('NFP');
-  if (cpi || fomc) {
-    // CPI/FOMC block Iron Condor
-    const label = evPresent.join(' + ');
-    rows.push({ cls: 'red', icon: 'X', label: label + ' this week', detail: 'NO Iron Condor — single spread only' + detailStr });
-  } else if (nfp) {
-    rows.push({ cls: 'yellow', icon: '~', label: 'NFP this week', detail: 'Require premium >$0.55 or +20% distance' + detailStr });
-  } else {
+  // One row per event type
+  if (cpiEv.length) {
+    const dates = cpiEv.map(e => e.date).join(', ');
+    rows.push({ cls: 'red', icon: 'X', label: 'CPI this week', detail: 'NO Iron Condor — single spread only (' + dates + ')' });
+  }
+  if (fomcEv.length) {
+    const dates = fomcEv.map(e => e.date).join(', ');
+    rows.push({ cls: 'red', icon: 'X', label: 'FOMC this week', detail: 'NO Iron Condor — single spread only (' + dates + ')' });
+  }
+  if (nfpEv.length) {
+    const dates = nfpEv.map(e => e.date).join(', ');
+    rows.push({ cls: 'yellow', icon: '~', label: 'NFP this week', detail: 'Require premium >$0.55 or +20% distance (' + dates + ')' });
+  }
+  if (!cpiEv.length && !fomcEv.length && !nfpEv.length) {
     rows.push({ cls: 'green', icon: '\u2713', label: 'No CPI/FOMC/NFP', detail: 'Iron Condor OK — no major events this week' });
   }
   el.innerHTML = rows.map(r => '<div class="check-row '+r.cls+'"><span class="icon">'+r.icon+'</span><span class="label">'+r.label+'</span><span class="detail">'+r.detail+'</span></div>').join('');
