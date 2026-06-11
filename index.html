@@ -701,31 +701,36 @@ function renderGoNoGo() {
   } else {
     rows.push({ cls: 'red', icon: '!', label: 'DTE: ' + dte, detail: 'Too short' });
   }
-  // Economic events — auto-detect from calendar.json
+  // Economic events — auto-detect from calendar.json (full calendar week of expiration)
   const weekEvents = getWeekEvents(exp);
   const cpiEv = weekEvents.filter(e => e.type === 'CPI');
   const fomcEv = weekEvents.filter(e => e.type === 'FOMC');
   const nfpEv = weekEvents.filter(e => e.type === 'NFP');
-  // Auto-set checkboxes and show details
+  // Auto-set checkboxes
   const chkCPI = $('chkCPI'), chkFOMC = $('chkFOMC'), chkNFP = $('chkNFP');
   chkCPI.checked = cpiEv.length > 0;
   chkFOMC.checked = fomcEv.length > 0;
   chkNFP.checked = nfpEv.length > 0;
-  // Allow manual override if no calendar data
   const cpi = chkCPI.checked, fomc = chkFOMC.checked, nfp = chkNFP.checked;
-  // Build event detail string for the checklist
+  // Build event detail string
   const eventDetails = [];
   if (cpiEv.length) eventDetails.push(...cpiEv.map(e => 'CPI ' + e.date));
   if (fomcEv.length) eventDetails.push(...fomcEv.map(e => 'FOMC ' + e.date));
   if (nfpEv.length) eventDetails.push(...nfpEv.map(e => 'NFP ' + e.date));
-  const detailStr = eventDetails.length ? eventDetails.join(', ') : '';
+  const detailStr = eventDetails.length ? ' (' + eventDetails.join(', ') + ')' : '';
+  // Build label listing which events are present
+  const evPresent = [];
+  if (cpi) evPresent.push('CPI');
+  if (fomc) evPresent.push('FOMC');
+  if (nfp) evPresent.push('NFP');
   if (cpi || fomc) {
-    rows.push({ cls: 'red', icon: 'X', label: (cpi?'CPI ':'')+(fomc?'FOMC ':''), detail: 'NO Iron Condor — single spread only' + (detailStr ? ' (' + detailStr + ')' : '') });
+    // CPI/FOMC block Iron Condor
+    const label = evPresent.join(' + ');
+    rows.push({ cls: 'red', icon: 'X', label: label + ' this week', detail: 'NO Iron Condor — single spread only' + detailStr });
+  } else if (nfp) {
+    rows.push({ cls: 'yellow', icon: '~', label: 'NFP this week', detail: 'Require premium >$0.55 or +20% distance' + detailStr });
   } else {
-    rows.push({ cls: 'green', icon: '\u2713', label: 'No CPI/FOMC', detail: 'Iron Condor OK' });
-  }
-  if (nfp) {
-    rows.push({ cls: 'yellow', icon: '~', label: 'NFP this week', detail: 'Require premium >$0.55 or +20% distance' });
+    rows.push({ cls: 'green', icon: '\u2713', label: 'No CPI/FOMC/NFP', detail: 'Iron Condor OK — no major events this week' });
   }
   el.innerHTML = rows.map(r => '<div class="check-row '+r.cls+'"><span class="icon">'+r.icon+'</span><span class="label">'+r.label+'</span><span class="detail">'+r.detail+'</span></div>').join('');
   // Show manual toggles only when no calendar data available
