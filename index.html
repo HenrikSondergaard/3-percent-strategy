@@ -85,8 +85,7 @@ tbody td.strike-col {
 tr.atm-row td.strike-col { background: #111d2e; }
 td.itm { background: rgba(255,255,255,0.02); }
 td.empty { color: #484f58; }
-td.pos-delta { color: #3fb950; }
-td.neg-delta { color: #f85149; }
+td.itm { color: #484f58; }
 .loading {
   text-align: center; padding: 60px; color: #8b949e; font-size: 14px;
 }
@@ -272,7 +271,7 @@ footer {
   <span><span class="dot dot-call"></span> Calls</span>
   <span><span class="dot dot-put"></span> Puts</span>
   <span><span class="dot dot-atm"></span> ATM row</span>
-  <span>Delta: Black-Scholes (r = 4.5%)</span>
+  <span>IV: Yahoo Finance</span>
   <span id="refreshStatus" class="refresh-status"></span>
 </div>
 
@@ -327,7 +326,7 @@ footer {
 </div>
 
 <footer>
-  <span>Data: Yahoo Finance / yfinance — Delta: Black-Scholes</span>
+  <span>Data: Yahoo Finance / yfinance</span>
   <span id="footerInfo"></span>
 </footer>
 
@@ -345,26 +344,7 @@ const refreshStatus = $('refreshStatus');
 // Config: set WORKER_URL in config.js or define here
 let WORKER_URL = ''; // will be loaded from config.js if available
 
-const RISK_FREE_RATE = 0.045;
-const TARGET_DELTA = 0.15;       // preferred sell-strike delta
-const DELTA_BAND = 0.10;         // show spreads within ±0.10 of target
-
-// ── Black-Scholes Delta (browser-side) ──
-function bsDelta(spot, strike, ttm, iv, isCall) {
-  if (!spot || !strike || !ttm || !iv || ttm <= 0 || iv <= 0) return null;
-  const d1 = (Math.log(spot / strike) + (RISK_FREE_RATE + 0.5 * iv * iv) * ttm) / (iv * Math.sqrt(ttm));
-  const nd1 = 0.5 * (1 + erf(d1 / Math.sqrt(2)));
-  return isCall ? round4(nd1) : round4(nd1 - 1);
-}
-function erf(x) {
-  const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
-  const sign = x < 0 ? -1 : 1;
-  x = Math.abs(x);
-  const t = 1.0/(1.0+p*x);
-  const y = 1.0-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
-  return sign*y;
-}
-
+// ── Helpers ──
 // ── Data cache ──
 let allExpirations = [];
 let chainCache = {};  // expiration -> chain data
@@ -492,18 +472,6 @@ async function loadChain() {
 function renderTable(data, strikeLimit) {
   const allRows = data.rows;
   const spot = data.spot || 0;
-  const ttm = data.ttm || 0;
-
-  // Compute delta for each row if not present
-  allRows.forEach(r => {
-    if (r.call && r.call.iv != null && r.call.delta == null) {
-      r.call.delta = bsDelta(spot, r.strike, ttm, r.call.iv / 100, true);
-    }
-    if (r.put && r.put.iv != null && r.put.delta == null) {
-      r.put.delta = bsDelta(spot, r.strike, ttm, r.put.iv / 100, false);
-    }
-  });
-
   // Apply strike limit
   let rows = allRows;
   if (strikeLimit && strikeLimit !== 'all') {
@@ -521,13 +489,13 @@ function renderTable(data, strikeLimit) {
 
   let h = '<table><thead>';
   h += '<tr>';
-  h += '<th colspan="7" class="call-section" style="text-align:center;font-size:11px;padding-bottom:2px">\u25C0 CALLS</th>';
+  h += '<th colspan="6" class="call-section" style="text-align:center;font-size:11px;padding-bottom:2px">\u25C0 CALLS</th>';
   h += '<th class="strike-col"></th>';
-  h += '<th colspan="7" class="put-section" style="text-align:center;font-size:11px;padding-bottom:2px">PUTS \u25B6</th>';
+  h += '<th colspan="6" class="put-section" style="text-align:center;font-size:11px;padding-bottom:2px">PUTS \u25B6</th>';
   h += '</tr><tr>';
-  h += th('Delta', 'call-section') + th('IV %', 'call-section') + th('Bid', 'call-section') + th('Ask', 'call-section') + th('Last', 'call-section') + th('Vol', 'call-section') + th('OI', 'call-section');
+  h += th('IV %', 'call-section') + th('Bid', 'call-section') + th('Ask', 'call-section') + th('Last', 'call-section') + th('Vol', 'call-section') + th('OI', 'call-section');
   h += th('Strike', 'strike-col');
-  h += th('Vol', 'put-section') + th('OI', 'put-section') + th('Bid', 'put-section') + th('Ask', 'put-section') + th('Last', 'put-section') + th('IV %', 'put-section') + th('Delta', 'put-section');
+  h += th('Vol', 'put-section') + th('OI', 'put-section') + th('Bid', 'put-section') + th('Ask', 'put-section') + th('Last', 'put-section') + th('IV %', 'put-section');
   h += '</tr></thead><tbody>';
 
   for (let i = 0; i < rows.length; i++) {
@@ -540,7 +508,6 @@ function renderTable(data, strikeLimit) {
     const cCls = c.itm ? ' itm' : '';
     const pCls = p.itm ? ' itm' : '';
 
-    h += tdDelta(c.delta, cCls);
     h += td(c.iv, cCls, 2, '%');
     h += td(c.bid, cCls, 2);
     h += td(c.ask, cCls, 2);
@@ -554,7 +521,6 @@ function renderTable(data, strikeLimit) {
     h += td(p.ask, pCls, 2);
     h += td(p.last, pCls, 2);
     h += td(p.iv, pCls, 2, '%');
-    h += tdDelta(p.delta, pCls);
     h += '</tr>';
   }
 
@@ -772,15 +738,15 @@ function renderWEM(data) {
   const spot = data.spot, ttm = data.ttm;
   if (!spot || !ttm) { el.innerHTML = '<span style="color:#484f58">Missing spot/ttm</span>'; return; }
   const dte = Math.max(1, Math.round(ttm * 365.25));
-  // Find strikes closest to |delta| = 0.15
+  // Find strikes closest to ATM with valid IV for WEM calculation
   let bestCall = null, bestPut = null, bestCDist = 999, bestPDist = 999;
   data.rows.forEach(r => {
-    if (r.call && r.call.delta != null && r.call.delta > 0) {
-      const d = Math.abs(r.call.delta - 0.15);
+    if (r.call && r.call.iv != null) {
+      const d = Math.abs(r.strike - spot);
       if (d < bestCDist) { bestCDist = d; bestCall = r; }
     }
-    if (r.put && r.put.delta != null) {
-      const d = Math.abs(Math.abs(r.put.delta) - 0.15);
+    if (r.put && r.put.iv != null) {
+      const d = Math.abs(r.strike - spot);
       if (d < bestPDist) { bestPDist = d; bestPut = r; }
     }
   });
@@ -794,7 +760,7 @@ function renderWEM(data) {
   let h = '';
   h += wemRow('Spot', fmtNum(spot, 2));
   h += wemRow('DTE', dte);
-  h += wemRow('15\u0394 IV (avg)', fmtNum(avgIV*100, 1) + '%');
+  h += wemRow('ATM IV (avg)', fmtNum(avgIV*100, 1) + '%');
   h += wemRow('WEM', '\u00B1' + fmtNum(wem, 1) + ' pts (' + fmtNum(wemPct, 2) + '%)');
   h += wemRow('Upper', fmtNum(upper, 1));
   h += wemRow('Lower', fmtNum(lower, 1));
@@ -839,7 +805,7 @@ function renderScanner(data) {
           const maxLoss = Math.max(10 - credit, 0);
           const rr = credit / maxLoss;
           bps.push({ sellK: K, buyK: Klow, credit, maxLoss, rr,
-            sellDelta: sell.delta, buyDelta: buy.delta,
+            sellIV: sell.iv,
             outsideWEM: K < wemL, dist: spot - K });
         }
       }
@@ -854,24 +820,18 @@ function renderScanner(data) {
           const maxLoss = Math.max(10 - credit, 0);
           const rr = credit / maxLoss;
           bcs.push({ sellK: K, buyK: Khigh, credit, maxLoss, rr,
-            sellDelta: sell.delta, buyDelta: buy.delta,
+            sellIV: sell.iv,
             outsideWEM: K > wemU, dist: K - spot });
         }
       }
     }
   }
-  // Sort by proximity to target delta (closest first), then slice
-  const deltaProximity = (a) => (a.sellDelta != null) ? Math.abs(Math.abs(a.sellDelta) - TARGET_DELTA) : 99;
-  bps.sort((a,b) => deltaProximity(a) - deltaProximity(b));
-  bcs.sort((a,b) => deltaProximity(a) - deltaProximity(b));
-
-  // Show only spreads within the delta band (fall back to top 25 if band is too narrow)
-  const inBand = (arr) => arr.filter(s => s.sellDelta != null && Math.abs(Math.abs(s.sellDelta) - TARGET_DELTA) <= DELTA_BAND);
-  let topBPS = inBand(bps), topBCS = inBand(bcs);
-  if (topBPS.length < 5) topBPS = bps.slice(0, 25);
-  if (topBCS.length < 5) topBCS = bcs.slice(0, 25);
-  topBPS = topBPS.slice(0, 25);
-  topBCS = topBCS.slice(0, 25);
+  // Sort by strike: BPS descending (closest to spot), BCS ascending (closest to spot)
+  bps.sort((a,b) => b.sellK - a.sellK);
+  bcs.sort((a,b) => a.sellK - b.sellK);
+  // Show top 25 spreads
+  let topBPS = bps.slice(0, 25);
+  let topBCS = bcs.slice(0, 25);
   // Show stale-data warning if fetched outside market hours
   const sn = $('staleNote');
   if (sn && data.fetched_at) {
@@ -896,7 +856,7 @@ function renderScanner(data) {
 function renderScanTable(rows, type) {
   if (!rows.length) return '<div style="color:#484f58;font-size:11px">No spreads found</div>';
   let h = '<table class="scan-tbl"><tr>';
-  h += '<th>Sell</th><th>Buy</th><th>Credit</th><th>MaxLoss</th><th>R/R</th><th>\u0394</th><th>Dist</th><th>WEM?</th>';
+  h += '<th>Sell</th><th>Buy</th><th>Credit</th><th>MaxLoss</th><th>R/R</th><th>Sell IV%</th><th>Dist</th><th>WEM?</th>';
   h += '</tr>';
   rows.forEach((r, i) => {
     const tgt = r.credit >= 0.55 && r.credit <= 0.65;
@@ -909,7 +869,7 @@ function renderScanTable(rows, type) {
     h += '<td>$'+r.credit.toFixed(2)+'</td>';
     h += '<td>$'+r.maxLoss.toFixed(2)+'</td>';
     h += '<td>'+r.rr.toFixed(1)+':1</td>';
-    h += '<td>'+(r.sellDelta!=null?r.sellDelta.toFixed(2):'-')+'</td>';
+    h += '<td>'+(r.sellIV!=null?r.sellIV.toFixed(1)+'%':'-')+'</td>';
     h += '<td>'+Math.round(r.dist)+'</td>';
     h += '<td>'+(r.outsideWEM?'Yes':'No')+'</td>';
     h += '</tr>';
@@ -937,8 +897,8 @@ function selectSpread(type, idx, tr) {
           && !byStrike[K].put.itm) {
         const credit = byStrike[K].put.bid - byStrike[Klow].put.ask;
         if (credit > 0.05) arr.push({ sellK: K, buyK: Klow, credit, maxLoss: Math.max(10-credit,0),
-          rr: credit/Math.max(10-credit,0.01), sellDelta: byStrike[K].put.delta,
-          buyDelta: byStrike[Klow].put.delta, outsideWEM: K < wemL, dist: spot - K,
+          rr: credit/Math.max(10-credit,0.01), sellIV: byStrike[K].put.iv,
+          outsideWEM: K < wemL, dist: spot - K,
           sellBid: byStrike[K].put.bid, buyAsk: byStrike[Klow].put.ask });
       }
     } else {
@@ -948,18 +908,19 @@ function selectSpread(type, idx, tr) {
           && !byStrike[K].call.itm) {
         const credit = byStrike[K].call.bid - byStrike[Khigh].call.ask;
         if (credit > 0.05) arr.push({ sellK: K, buyK: Khigh, credit, maxLoss: Math.max(10-credit,0),
-          rr: credit/Math.max(10-credit,0.01), sellDelta: byStrike[K].call.delta,
-          buyDelta: byStrike[Khigh].call.delta, outsideWEM: K > wemU, dist: K - spot,
+          rr: credit/Math.max(10-credit,0.01), sellIV: byStrike[K].call.iv,
+          outsideWEM: K > wemU, dist: K - spot,
           sellBid: byStrike[K].call.bid, buyAsk: byStrike[Khigh].call.ask });
       }
     }
   }
-  // Same sort as renderScanner: by delta proximity to target, within band
-  const dp = (a) => (a.sellDelta != null) ? Math.abs(Math.abs(a.sellDelta) - TARGET_DELTA) : 99;
-  arr.sort((a,b) => dp(a) - dp(b));
-  const bandArr = arr.filter(s => s.sellDelta != null && Math.abs(Math.abs(s.sellDelta) - TARGET_DELTA) <= DELTA_BAND);
-  const finalArr = bandArr.length >= 5 ? bandArr : arr;
-  const s = finalArr[idx];
+  // Same sort as renderScanner: by strike
+  if (type === 'bps') {
+    arr.sort((a,b) => b.sellK - a.sellK);   // descending: closest to spot first
+  } else {
+    arr.sort((a,b) => a.sellK - b.sellK);   // ascending: closest to spot first
+  }
+  const s = arr[idx];
   if (!s) return;
   // Toggle: clicking same row deselects
   if (type === 'bps') {
@@ -998,7 +959,7 @@ function renderSummary() {
   if (selectedBPS) {
     t += '\nBULL PUT SPREAD' + '\n';
     t += '  SELL  ' + pad(selectedBPS.sellK + ' PUT',10) + ' @ $' + selectedBPS.sellBid.toFixed(2);
-    t += '  (\u0394: ' + (selectedBPS.sellDelta!=null ? selectedBPS.sellDelta.toFixed(2) : '-') + ')\n';
+    t += '  (IV: ' + (selectedBPS.sellIV!=null ? selectedBPS.sellIV.toFixed(1)+'%' : '-') + ')\n';
     t += '  BUY   ' + pad(selectedBPS.buyK + ' PUT',10) + ' @ $' + selectedBPS.buyAsk.toFixed(2) + '\n';
     t += '  Credit: $' + selectedBPS.credit.toFixed(2) + '  |  Max Loss: $' + selectedBPS.maxLoss.toFixed(2) + '\n';
     t += '  R/R: ' + selectedBPS.rr.toFixed(1) + ':1';
@@ -1007,7 +968,7 @@ function renderSummary() {
   if (selectedBCS) {
     t += '\nBEAR CALL SPREAD' + '\n';
     t += '  SELL  ' + pad(selectedBCS.sellK + ' CALL',10) + ' @ $' + selectedBCS.sellBid.toFixed(2);
-    t += '  (\u0394: ' + (selectedBCS.sellDelta!=null ? selectedBCS.sellDelta.toFixed(2) : '-') + ')\n';
+    t += '  (IV: ' + (selectedBCS.sellIV!=null ? selectedBCS.sellIV.toFixed(1)+'%' : '-') + ')\n';
     t += '  BUY   ' + pad(selectedBCS.buyK + ' CALL',10) + ' @ $' + selectedBCS.buyAsk.toFixed(2) + '\n';
     t += '  Credit: $' + selectedBCS.credit.toFixed(2) + '  |  Max Loss: $' + selectedBCS.maxLoss.toFixed(2) + '\n';
     t += '  R/R: ' + selectedBCS.rr.toFixed(1) + ':1';
@@ -1062,12 +1023,6 @@ function td(val, extraCls, decimals, suffix) {
   let s = fmtNum(val, decimals);
   if (suffix) s += suffix;
   return '<td class="' + (extraCls||'') + '">' + s + '</td>';
-}
-
-function tdDelta(val, extraCls) {
-  if (val == null || val !== val) return '<td class="empty' + (extraCls||'') + '">-</td>';
-  const colorCls = val >= 0 ? ' pos-delta' : ' neg-delta';
-  return '<td class="' + (extraCls||'') + colorCls + '">' + val.toFixed(4) + '</td>';
 }
 
 function fmtNum(val, decimals) {

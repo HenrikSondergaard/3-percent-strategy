@@ -15,13 +15,11 @@ import json
 import sys
 import time
 from datetime import datetime, timezone
-from math import erf, exp, log, sqrt
 from pathlib import Path
 
 import yfinance as yf
 
 TICKER = "^SPX"
-RISK_FREE_RATE = 0.045
 DATA_DIR = Path(__file__).parent / "data"
 THROTTLE_SECONDS = 1.5  # delay between chain fetches to avoid Yahoo throttling
 
@@ -167,7 +165,6 @@ def row_to_dict(df, strike, spot, ttm, is_call):
     r = match.iloc[0]
 
     iv_decimal = safe_float(r.get("impliedVolatility"))
-    delta = bs_delta(spot, strike, ttm, iv_decimal, is_call) if iv_decimal else None
 
     return {
         "bid": safe_float(r.get("bid")),
@@ -176,7 +173,6 @@ def row_to_dict(df, strike, spot, ttm, is_call):
         "volume": safe_float(r.get("volume"), 0),
         "oi": safe_float(r.get("openInterest"), 0),
         "iv": round(iv_decimal * 100, 2) if iv_decimal else None,
-        "delta": delta,
         "itm": bool(r.get("inTheMoney", False)),
     }
 
@@ -191,19 +187,6 @@ def safe_float(v, default=None):
         return round(val, 4)
     except (ValueError, TypeError):
         return default
-
-
-def bs_delta(spot, strike, ttm, iv, is_call):
-    if not all([spot, strike, ttm, iv]) or ttm <= 0 or iv <= 0:
-        return None
-    try:
-        d1 = (log(spot / strike) + (RISK_FREE_RATE + 0.5 * iv * iv) * ttm) / (
-            iv * sqrt(ttm)
-        )
-        nd1 = 0.5 * (1.0 + erf(d1 / sqrt(2.0)))
-        return round(nd1 if is_call else nd1 - 1.0, 4)
-    except (ValueError, ZeroDivisionError):
-        return None
 
 
 if __name__ == "__main__":
