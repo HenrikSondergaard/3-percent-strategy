@@ -65,6 +65,7 @@ def fetch_url(url: str) -> str:
 
 def parse_bls_schedule(html: str, event_type: str) -> list[dict]:
     """Parse BLS schedule HTML page to extract release dates."""
+    t_utc = CPI_TIME_UTC if event_type == "CPI" else NFP_TIME_UTC
     soup = BeautifulSoup(html, "html.parser")
     events = []
     for table in soup.find_all("table"):
@@ -79,6 +80,7 @@ def parse_bls_schedule(html: str, event_type: str) -> list[dict]:
                         "date": parsed.strftime("%Y-%m-%d"),
                         "type": event_type,
                         "label": f"{event_type} ({ref})",
+                        "time_utc": t_utc,
                     })
     return events
 
@@ -114,17 +116,23 @@ def fetch_bls_events() -> list[dict]:
 
 # ── Static fallback ──────────────────────────────────────────────────
 
+# Event release times (UTC): CPI and NFP at 8:30 AM ET, FOMC announcement at 2:00 PM ET
+CPI_TIME_UTC = "12:30"
+NFP_TIME_UTC = "12:30"
+FOMC_TIME_UTC = "18:00"
+
+
 def static_events() -> list[dict]:
     """Return events from hardcoded BLS dates."""
     events = []
     for d in STATIC_CPI:
         dt = datetime.strptime(d, "%Y-%m-%d")
         ref = dt.replace(day=1).strftime("%b %Y")
-        events.append({"date": d, "type": "CPI", "label": f"CPI ({ref})"})
+        events.append({"date": d, "type": "CPI", "label": f"CPI ({ref})", "time_utc": CPI_TIME_UTC})
     for d in STATIC_NFP:
         dt = datetime.strptime(d, "%Y-%m-%d")
         ref = dt.replace(day=1).strftime("%b %Y")
-        events.append({"date": d, "type": "NFP", "label": f"NFP ({ref})"})
+        events.append({"date": d, "type": "NFP", "label": f"NFP ({ref})", "time_utc": NFP_TIME_UTC})
     return events
 
 
@@ -165,6 +173,7 @@ def parse_fomc_calendar(html: str) -> list[dict]:
                         "date": dt.strftime("%Y-%m-%d"),
                         "type": "FOMC",
                         "label": f"FOMC Meeting ({month_str})",
+                        "time_utc": FOMC_TIME_UTC,
                     })
                 except ValueError:
                     pass
@@ -186,6 +195,7 @@ def parse_fomc_calendar(html: str) -> list[dict]:
                         "date": dt.strftime("%Y-%m-%d"),
                         "type": "FOMC",
                         "label": f"FOMC Meeting ({mm.group(1)})",
+                        "time_utc": FOMC_TIME_UTC,
                     })
                 except ValueError:
                     pass

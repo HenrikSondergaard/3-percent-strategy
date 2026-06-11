@@ -674,6 +674,22 @@ function getWeekEvents(expirationDate) {
   return calendarData.events.filter(e => e.date >= ws && e.date <= we);
 }
 
+function fmtEventTime(ev) {
+  // Format event date + time in Scandinavian timezone (Europe/Copenhagen)
+  const dateStr = ev.date;
+  const timeUtc = ev.time_utc || '00:00';
+  const [h, m] = timeUtc.split(':').map(Number);
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCHours(h, m, 0, 0);
+  const formatted = d.toLocaleString('en-GB', {
+    timeZone: 'Europe/Copenhagen',
+    day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit',
+    hour12: false
+  });
+  return formatted;
+}
+
 function renderGoNoGo() {
   const el = $('goNoGoContent');
   if (!currentChainData) { el.innerHTML = '<span style="color:#484f58">No chain data</span>'; return; }
@@ -701,32 +717,31 @@ function renderGoNoGo() {
   } else {
     rows.push({ cls: 'red', icon: '!', label: 'DTE: ' + dte, detail: 'Too short' });
   }
-  // Economic events — auto-detect from calendar.json (full calendar week of expiration)
+  // Economic events — always show all 3 types (CPI, FOMC, NFP)
   const weekEvents = getWeekEvents(exp);
-  const cpiEv = weekEvents.filter(e => e.type === 'CPI');
-  const fomcEv = weekEvents.filter(e => e.type === 'FOMC');
-  const nfpEv = weekEvents.filter(e => e.type === 'NFP');
-  // Auto-set checkboxes
-  const chkCPI = $('chkCPI'), chkFOMC = $('chkFOMC'), chkNFP = $('chkNFP');
-  chkCPI.checked = cpiEv.length > 0;
-  chkFOMC.checked = fomcEv.length > 0;
-  chkNFP.checked = nfpEv.length > 0;
-  // One row per event type
-  if (cpiEv.length) {
-    const dates = cpiEv.map(e => e.date).join(', ');
-    rows.push({ cls: 'red', icon: 'X', label: 'CPI this week', detail: 'NO Iron Condor — single spread only (' + dates + ')' });
-  }
-  if (fomcEv.length) {
-    const dates = fomcEv.map(e => e.date).join(', ');
-    rows.push({ cls: 'red', icon: 'X', label: 'FOMC this week', detail: 'NO Iron Condor — single spread only (' + dates + ')' });
-  }
-  if (nfpEv.length) {
-    const dates = nfpEv.map(e => e.date).join(', ');
-    rows.push({ cls: 'yellow', icon: '~', label: 'NFP this week', detail: 'Require premium >$0.55 or +20% distance (' + dates + ')' });
-  }
-  if (!cpiEv.length && !fomcEv.length && !nfpEv.length) {
-    rows.push({ cls: 'green', icon: '\u2713', label: 'No CPI/FOMC/NFP', detail: 'Iron Condor OK — no major events this week' });
-  }
+  const types = ['CPI', 'FOMC', 'NFP'];
+  types.forEach(evtType => {
+    const inWeek = weekEvents.filter(e => e.type === evtType);
+    // Find next upcoming event of this type (from today)
+    const allOfType = (calendarData && calendarData.events)
+      ? calendarData.events.filter(e => e.type === evtType && e.date >= new Date().toISOString().slice(0,10))
+      : [];
+    const next = allOfType.length ? allOfType[0] : null;
+
+    if (inWeek.length) {
+      // Event is in the selected expiration's week — red/yellow
+      const dates = inWeek.map(e => fmtEventTime(e)).join(', ');
+      if (evtType === 'NFP') {
+        rows.push({ cls: 'yellow', icon: '~', label: 'NFP this week', detail: 'Require premium >$0.55 or +20% distance (' + dates + ')' });
+      } else {
+        rows.push({ cls: 'red', icon: 'X', label: evtType + ' this week', detail: 'NO Iron Condor — single spread only (' + dates + ')' });
+      }
+    } else {
+      // No event this week — green, show next occurrence
+      const nextStr = next ? 'Next: ' + fmtEventTime(next) : 'No upcoming data';
+      rows.push({ cls: 'green', icon: '\u2713', label: 'No ' + evtType + ' this week', detail: nextStr });
+    }
+  });
   el.innerHTML = rows.map(r => '<div class="check-row '+r.cls+'"><span class="icon">'+r.icon+'</span><span class="label">'+r.label+'</span><span class="detail">'+r.detail+'</span></div>').join('');
   // Show manual toggles only when no calendar data available
   $('eventToggles').style.display = (calendarData && calendarData.events && calendarData.events.length) ? 'none' : '';
