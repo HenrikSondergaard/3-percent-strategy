@@ -278,7 +278,8 @@ footer {
 
 <!-- ── Strategy Panel ── -->
 <div class="strategy-panel" id="strategyPanel">
-  <h2>Strategy Dashboard <span class="subtitle">Peter's 10%/wk — Iron Condor Planner</span></h2>
+  <h2>3% Strategy</h2>
+  <div id="dataTimestamp" style="font-size:11px;color:#8b949e;margin-bottom:10px;"></div>
 
   <div class="strat-grid">
     <!-- Go / No-Go -->
@@ -300,7 +301,7 @@ footer {
 
     <!-- Spread Scanner -->
     <div class="strat-card full-width" id="scannerCard">
-      <h3>Credit Spread Scanner ($10-wide) <span style="font-weight:400;color:#8b949e"> — click a row to select for Iron Condor</span></h3>
+      <h3>Credit Spread Scanner ($10-wide) <span style="font-weight:400;color:#8b949e"> — click a row to select for Iron Condor</span> <span id="staleNote" style="display:none;font-weight:600;color:#d29922;margin-left:8px">\u26A0 After-hours data — bids/asks may be stale</span></h3>
       <div id="scannerContent"><span style="color:#484f58">Loading...</span></div>
     </div>
 
@@ -488,7 +489,12 @@ function renderTable(data, strikeLimit) {
   let atmIdx = 0, minDist = Infinity;
   rows.forEach((r, i) => { const d = Math.abs(r.strike - spot); if (d < minDist) { minDist = d; atmIdx = i; } });
 
-  let h = '<table><thead><tr>';
+  let h = '<table><thead>';
+  h += '<tr>';
+  h += '<th colspan="7" class="call-section" style="text-align:center;font-size:11px;padding-bottom:2px">\u25C0 CALLS</th>';
+  h += '<th class="strike-col"></th>';
+  h += '<th colspan="7" class="put-section" style="text-align:center;font-size:11px;padding-bottom:2px">PUTS \u25B6</th>';
+  h += '</tr><tr>';
   h += th('Delta', 'call-section') + th('IV %', 'call-section') + th('Bid', 'call-section') + th('Ask', 'call-section') + th('Last', 'call-section') + th('Vol', 'call-section') + th('OI', 'call-section');
   h += th('Strike', 'strike-col');
   h += th('Vol', 'put-section') + th('OI', 'put-section') + th('Bid', 'put-section') + th('Ask', 'put-section') + th('Last', 'put-section') + th('IV %', 'put-section') + th('Delta', 'put-section');
@@ -601,6 +607,11 @@ async function pollForUpdate() {
           allExpirations = expData.expirations || [];
           populateExpirations(allExpirations);
         }
+        // Re-fetch VIX data so Go/No-Go stays current
+        try {
+          const vr = await fetch('data/vix.json?' + Date.now());
+          if (vr.ok) vixData = await vr.json();
+        } catch(e) {}
         refreshStatus.textContent = 'Data updated!';
         refreshStatus.className = 'refresh-status ok';
         loadChain();
@@ -623,9 +634,24 @@ async function pollForUpdate() {
 
 // ── Strategy Functions ──
 
+function updateDataTimestamp(chainData) {
+  const el = $('dataTimestamp');
+  const parts = [];
+  if (chainData && chainData.fetched_at) {
+    parts.push('Chain data: ' + new Date(chainData.fetched_at).toLocaleString());
+  }
+  if (vixData && vixData.fetched_at) {
+    parts.push('VIX: ' + new Date(vixData.fetched_at).toLocaleString());
+  }
+  if (parts.length) {
+    el.textContent = parts.join('  \u2502  ');
+  }
+}
+
 function renderStrategy(data) {
   selectedBPS = null;
   selectedBCS = null;
+  updateDataTimestamp(data);
   renderGoNoGo();
   renderWEM(data);
   renderScanner(data);
@@ -766,15 +792,28 @@ function renderScanner(data) {
       }
     }
   }
-  bps.sort((a,b) => b.rr - a.rr);
-  bcs.sort((a,b) => b.rr - a.rr);
+  bps.sort((a,b) => b.sellK - a.sellK);   // descending: closest to spot first
+  bcs.sort((a,b) => a.sellK - b.sellK);   // ascending: closest to spot first
+  // Show stale-data warning if fetched outside market hours
+  const sn = $('staleNote');
+  if (sn && data.fetched_at) {
+    const ft = new Date(data.fetched_at);
+    const day = ft.getUTCDay(); // 0=Sun,6=Sat
+    const hour = ft.getUTCHours();
+    const minute = ft.getUTCMinutes();
+    const mktMin = hour * 60 + minute; // UTC minutes
+    // US market hours: ~13:30–21:00 UTC (covers EDT and EST)
+    const afterHours = day === 0 || day === 6 || mktMin < 810 || mktMin > 1260;
+    sn.style.display = afterHours ? 'inline' : 'none';
+  }
+
   const topBPS = bps.slice(0, 25), topBCS = bcs.slice(0, 25);
   let h = '<div class="scanner-tables">';
-  h += '<div class="scanner-half"><h4 class="bps">Bull Put Spreads (BPS)</h4>';
-  h += renderScanTable(topBPS, 'bps');
-  h += '</div>';
   h += '<div class="scanner-half"><h4 class="bcs">Bear Call Spreads (BCS)</h4>';
   h += renderScanTable(topBCS, 'bcs');
+  h += '</div>';
+  h += '<div class="scanner-half"><h4 class="bps">Bull Put Spreads (BPS)</h4>';
+  h += renderScanTable(topBPS, 'bps');
   h += '</div></div>';
   el.innerHTML = h;
 }
@@ -840,7 +879,11 @@ function selectSpread(type, idx, tr) {
       }
     }
   }
-  arr.sort((a,b) => b.rr - a.rr);
+  if (type === 'bps') {
+    arr.sort((a,b) => b.sellK - a.sellK);   // descending: closest to spot first
+  } else {
+    arr.sort((a,b) => a.sellK - b.sellK);   // ascending: closest to spot first
+  }
   const s = arr[idx];
   if (!s) return;
   // Toggle: clicking same row deselects
