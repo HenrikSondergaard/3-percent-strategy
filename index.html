@@ -178,8 +178,8 @@ footer {
   font-size: 11px; margin-bottom: 6px;
   text-transform: uppercase; letter-spacing: 0.5px;
 }
-.scanner-half h4.bps { color: #3fb950; }
-.scanner-half h4.bcs { color: #f85149; }
+.scanner-half h4.scanner-calls { color: #3fb950; }
+.scanner-half h4.scanner-puts { color: #f85149; }
 .scan-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
 .scan-tbl th {
   text-align: right; padding: 4px 6px; color: #8b949e;
@@ -286,7 +286,7 @@ footer {
     <div class="strat-card" id="goNoGoCard">
       <h3>Go / No-Go Checklist</h3>
       <div id="goNoGoContent"><span style="color:#484f58">Loading...</span></div>
-      <div class="toggle-row" id="eventToggles">
+      <div class="toggle-row" id="eventToggles" style="display:none">
         <label><input type="checkbox" id="chkCPI"> CPI this week</label>
         <label><input type="checkbox" id="chkFOMC"> FOMC this week</label>
         <label><input type="checkbox" id="chkNFP"> NFP this week</label>
@@ -346,6 +346,8 @@ const refreshStatus = $('refreshStatus');
 let WORKER_URL = ''; // will be loaded from config.js if available
 
 const RISK_FREE_RATE = 0.045;
+const TARGET_DELTA = 0.15;       // preferred sell-strike delta
+const DELTA_BAND = 0.10;         // show spreads within ±0.10 of target
 
 // ── Black-Scholes Delta (browser-side) ──
 function bsDelta(spot, strike, ttm, iv, isCall) {
@@ -372,6 +374,7 @@ let vixData = null;   // { vix, vix_change_pct }
 let currentChainData = null;
 let selectedBPS = null;  // { sellStrike, buyStrike, credit, ... }
 let selectedBCS = null;
+let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
 
 // ── Load config then init ──
 (async () => {
@@ -399,6 +402,11 @@ let selectedBCS = null;
       const vr = await fetch('data/vix.json');
       if (vr.ok) vixData = await vr.json();
     } catch(e) {}
+    // Load economic calendar
+    try {
+      const cr = await fetch('data/calendar.json');
+      if (cr.ok) calendarData = await cr.json();
+    } catch(e) {}
     loadChain();
   } catch(e) {
     content.innerHTML = '<div class="error">No data yet. Click "Refresh Data" to fetch options chain from Yahoo Finance.</div>';
@@ -409,13 +417,35 @@ let selectedBCS = null;
 
 function populateExpirations(exps) {
   expSel.innerHTML = '';
+  const target = nearestFriday();
+  let bestIdx = 0, bestDist = Infinity;
   exps.forEach((e, i) => {
     const o = document.createElement('option');
     o.value = e;
     o.textContent = fmtExp(e);
-    if (i === 0) o.selected = true;
     expSel.appendChild(o);
+    const dist = Math.abs(new Date(e + 'T00:00:00').getTime() - target.getTime());
+    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
   });
+  expSel.selectedIndex = bestIdx;
+}
+
+function nearestFriday() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dow = today.getDay(); // 0=Sun ... 5=Fri, 6=Sat
+  // Days until next Friday (or 0 if today is Friday)
+  let daysToFri = (5 - dow + 7) % 7;
+  // If today is Saturday (6), next Friday is 6 days away
+  // If today is Sunday (0), next Friday is 5 days away
+  // If today is Friday (5), use today
+  if (daysToFri === 0 && now.getHours() >= 17) {
+    // After market close on Friday, use next Friday
+    daysToFri = 7;
+  }
+  const fri = new Date(today);
+  fri.setDate(fri.getDate() + daysToFri);
+  return fri;
 }
 
 // ── Event handlers ──
@@ -612,6 +642,11 @@ async function pollForUpdate() {
           const vr = await fetch('data/vix.json?' + Date.now());
           if (vr.ok) vixData = await vr.json();
         } catch(e) {}
+        // Re-fetch economic calendar
+        try {
+          const cr = await fetch('data/calendar.json?' + Date.now());
+          if (cr.ok) calendarData = await cr.json();
+        } catch(e) {}
         refreshStatus.textContent = 'Data updated!';
         refreshStatus.className = 'refresh-status ok';
         loadChain();
@@ -658,6 +693,21 @@ function renderStrategy(data) {
   renderSummary();
 }
 
+function getWeekEvents(expirationDate) {
+  // Find calendar events in the same week as the expiration
+  if (!calendarData || !calendarData.events) return [];
+  const exp = new Date(expirationDate + 'T00:00:00');
+  // Get the Sunday-to-Saturday week containing the expiration
+  const dow = exp.getDay(); // 0=Sun
+  const weekStart = new Date(exp);
+  weekStart.setDate(exp.getDate() - dow);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  const ws = weekStart.toISOString().slice(0, 10);
+  const we = weekEnd.toISOString().slice(0, 10);
+  return calendarData.events.filter(e => e.date >= ws && e.date <= we);
+}
+
 function renderGoNoGo() {
   const el = $('goNoGoContent');
   if (!currentChainData) { el.innerHTML = '<span style="color:#484f58">No chain data</span>'; return; }
@@ -685,10 +735,26 @@ function renderGoNoGo() {
   } else {
     rows.push({ cls: 'red', icon: '!', label: 'DTE: ' + dte, detail: 'Too short' });
   }
-  // Economic events
-  const cpi = $('chkCPI').checked, fomc = $('chkFOMC').checked, nfp = $('chkNFP').checked;
+  // Economic events — auto-detect from calendar.json
+  const weekEvents = getWeekEvents(exp);
+  const cpiEv = weekEvents.filter(e => e.type === 'CPI');
+  const fomcEv = weekEvents.filter(e => e.type === 'FOMC');
+  const nfpEv = weekEvents.filter(e => e.type === 'NFP');
+  // Auto-set checkboxes and show details
+  const chkCPI = $('chkCPI'), chkFOMC = $('chkFOMC'), chkNFP = $('chkNFP');
+  chkCPI.checked = cpiEv.length > 0;
+  chkFOMC.checked = fomcEv.length > 0;
+  chkNFP.checked = nfpEv.length > 0;
+  // Allow manual override if no calendar data
+  const cpi = chkCPI.checked, fomc = chkFOMC.checked, nfp = chkNFP.checked;
+  // Build event detail string for the checklist
+  const eventDetails = [];
+  if (cpiEv.length) eventDetails.push(...cpiEv.map(e => 'CPI ' + e.date));
+  if (fomcEv.length) eventDetails.push(...fomcEv.map(e => 'FOMC ' + e.date));
+  if (nfpEv.length) eventDetails.push(...nfpEv.map(e => 'NFP ' + e.date));
+  const detailStr = eventDetails.length ? eventDetails.join(', ') : '';
   if (cpi || fomc) {
-    rows.push({ cls: 'red', icon: 'X', label: (cpi?'CPI ':'')+(fomc?'FOMC':''), detail: 'NO Iron Condor — single spread only' });
+    rows.push({ cls: 'red', icon: 'X', label: (cpi?'CPI ':'')+(fomc?'FOMC ':''), detail: 'NO Iron Condor — single spread only' + (detailStr ? ' (' + detailStr + ')' : '') });
   } else {
     rows.push({ cls: 'green', icon: '\u2713', label: 'No CPI/FOMC', detail: 'Iron Condor OK' });
   }
@@ -696,6 +762,8 @@ function renderGoNoGo() {
     rows.push({ cls: 'yellow', icon: '~', label: 'NFP this week', detail: 'Require premium >$0.55 or +20% distance' });
   }
   el.innerHTML = rows.map(r => '<div class="check-row '+r.cls+'"><span class="icon">'+r.icon+'</span><span class="label">'+r.label+'</span><span class="detail">'+r.detail+'</span></div>').join('');
+  // Show manual toggles only when no calendar data available
+  $('eventToggles').style.display = (calendarData && calendarData.events && calendarData.events.length) ? 'none' : '';
 }
 
 function renderWEM(data) {
@@ -792,27 +860,34 @@ function renderScanner(data) {
       }
     }
   }
-  bps.sort((a,b) => b.sellK - a.sellK);   // descending: closest to spot first
-  bcs.sort((a,b) => a.sellK - b.sellK);   // ascending: closest to spot first
+  // Sort by proximity to target delta (closest first), then slice
+  const deltaProximity = (a) => (a.sellDelta != null) ? Math.abs(Math.abs(a.sellDelta) - TARGET_DELTA) : 99;
+  bps.sort((a,b) => deltaProximity(a) - deltaProximity(b));
+  bcs.sort((a,b) => deltaProximity(a) - deltaProximity(b));
+
+  // Show only spreads within the delta band (fall back to top 25 if band is too narrow)
+  const inBand = (arr) => arr.filter(s => s.sellDelta != null && Math.abs(Math.abs(s.sellDelta) - TARGET_DELTA) <= DELTA_BAND);
+  let topBPS = inBand(bps), topBCS = inBand(bcs);
+  if (topBPS.length < 5) topBPS = bps.slice(0, 25);
+  if (topBCS.length < 5) topBCS = bcs.slice(0, 25);
+  topBPS = topBPS.slice(0, 25);
+  topBCS = topBCS.slice(0, 25);
   // Show stale-data warning if fetched outside market hours
   const sn = $('staleNote');
   if (sn && data.fetched_at) {
     const ft = new Date(data.fetched_at);
-    const day = ft.getUTCDay(); // 0=Sun,6=Sat
+    const day = ft.getUTCDay();
     const hour = ft.getUTCHours();
     const minute = ft.getUTCMinutes();
-    const mktMin = hour * 60 + minute; // UTC minutes
-    // US market hours: ~13:30–21:00 UTC (covers EDT and EST)
+    const mktMin = hour * 60 + minute;
     const afterHours = day === 0 || day === 6 || mktMin < 810 || mktMin > 1260;
     sn.style.display = afterHours ? 'inline' : 'none';
   }
-
-  const topBPS = bps.slice(0, 25), topBCS = bcs.slice(0, 25);
   let h = '<div class="scanner-tables">';
-  h += '<div class="scanner-half"><h4 class="bcs">Bear Call Spreads (BCS)</h4>';
+  h += '<div class="scanner-half"><h4 class="scanner-calls">Bear Call Spreads (BCS)</h4>';
   h += renderScanTable(topBCS, 'bcs');
   h += '</div>';
-  h += '<div class="scanner-half"><h4 class="bps">Bull Put Spreads (BPS)</h4>';
+  h += '<div class="scanner-half"><h4 class="scanner-puts">Bull Put Spreads (BPS)</h4>';
   h += renderScanTable(topBPS, 'bps');
   h += '</div></div>';
   el.innerHTML = h;
@@ -879,12 +954,12 @@ function selectSpread(type, idx, tr) {
       }
     }
   }
-  if (type === 'bps') {
-    arr.sort((a,b) => b.sellK - a.sellK);   // descending: closest to spot first
-  } else {
-    arr.sort((a,b) => a.sellK - b.sellK);   // ascending: closest to spot first
-  }
-  const s = arr[idx];
+  // Same sort as renderScanner: by delta proximity to target, within band
+  const dp = (a) => (a.sellDelta != null) ? Math.abs(Math.abs(a.sellDelta) - TARGET_DELTA) : 99;
+  arr.sort((a,b) => dp(a) - dp(b));
+  const bandArr = arr.filter(s => s.sellDelta != null && Math.abs(Math.abs(s.sellDelta) - TARGET_DELTA) <= DELTA_BAND);
+  const finalArr = bandArr.length >= 5 ? bandArr : arr;
+  const s = finalArr[idx];
   if (!s) return;
   // Toggle: clicking same row deselects
   if (type === 'bps') {

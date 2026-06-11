@@ -1,0 +1,85 @@
+{
+  "fetched_at": "2026-06-11T11:35:15.972071+00:00",
+  "events": [
+    {
+      "date": "2026-06-16",
+      "type": "FOMC",
+      "label": "FOMC Meeting (June)"
+    },
+    {
+      "date": "2026-06-17",
+      "type": "FOMC",
+      "label": "FOMC Meeting (June)"
+    },
+    {
+      "date": "2026-07-02",
+      "type": "NFP",
+      "label": "NFP (Jul 2026)"
+    },
+    {
+      "date": "2026-07-09",
+      "type": "FOMC",
+      "label": "FOMC Meeting (July)"
+    },
+    {
+      "date": "2026-07-14",
+      "type": "CPI",
+      "label": "CPI (Jul 2026)"
+    },
+    {
+      "date": "2026-07-28",
+      "type": "FOMC",
+      "label": "FOMC Meeting (July)"
+    },
+    {
+      "date": "2026-07-29",
+      "type": "FOMC",
+      "label": "FOMC Meeting (July)"
+    },
+    {
+      "date": "2026-08-07",
+      "type": "NFP",
+      "label": "NFP (Aug 2026)"
+    },
+    {
+      "date": "2026-08-12",
+      "type": "CPI",
+      "label": "CPI (Aug 2026)"
+    },
+    {
+      "date": "2026-08-20",
+      "type": "FOMC",
+      "label": "FOMC Meeting (August)"
+    },
+    {
+      "date": "2026-08-22",
+      "type": "FOMC",
+      "label": "FOMC Meeting (August)"
+    },
+    {
+      "date": "2026-09-04",
+      "type": "NFP",
+      "label": "NFP (Sep 2026)"
+    },
+    {
+      "date": "2026-09-11",
+      "type": "CPI",
+      "label": "CPI (Sep 2026)"
+    },
+    {
+      "date": "2026-09-15",
+      "type": "FOMC",
+      "label": "FOMC Meeting (September)"
+    },
+    {
+      "date": "2026-09-16",
+      "type": "FOMC",
+      "label": "FOMC Meeting (September)"
+    },
+    {
+      "date": "2026-10-02",
+      "type": "NFP",
+      "label": "NFP (Oct 2026)"
+    }
+  ]
+}
