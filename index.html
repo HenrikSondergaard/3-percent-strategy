@@ -776,9 +776,12 @@ function renderWEM(data) {
   h += wemRow('Spot', fmtNum(spot, 2));
   h += wemRow('DTE', dte);
   h += wemRow('ATM IV (avg)', fmtNum(avgIV*100, 1) + '%');
-  h += wemRow('WEM', '\u00B1' + fmtNum(wem, 1) + ' pts (' + fmtNum(wemPct, 2) + '%)');
-  h += wemRow('Upper', fmtNum(upper, 1));
-  h += wemRow('Lower', fmtNum(lower, 1));
+  h += wemRow('WEM', '\u00B1' + fmtNum(wem, 1) + ' pts (' + fmtNum(wemPct, 2) + '%)',
+    'WEM = Spot \u00D7 IV \u00D7 \u221A(DTE/252)\n= ' + fmtNum(spot,2) + ' \u00D7 ' + fmtNum(avgIV*100,1) + '% \u00D7 \u221A(' + dte + '/252)\n= \u00B1' + fmtNum(wem, 1) + ' pts');
+  h += wemRow('Upper', fmtNum(upper, 1),
+    'Upper = Spot + WEM\n= ' + fmtNum(spot,2) + ' + ' + fmtNum(wem,1) + '\n= ' + fmtNum(upper,1));
+  h += wemRow('Lower', fmtNum(lower, 1),
+    'Lower = Spot - WEM\n= ' + fmtNum(spot,2) + ' - ' + fmtNum(wem,1) + '\n= ' + fmtNum(lower,1));
   // Visual bar
   const range = wem * 3;
   const leftPct = ((spot - lower) / (range * 2)) * 100;
@@ -793,8 +796,9 @@ function renderWEM(data) {
   el.innerHTML = h;
 }
 
-function wemRow(label, value) {
-  return '<div class="wem-row"><span class="wl">'+label+'</span><span class="wv">'+value+'</span></div>';
+function wemRow(label, value, tooltip) {
+  const tt = tooltip ? ' title="' + tooltip.replace(/"/g, '&quot;') + '"' : '';
+  return '<div class="wem-row"' + tt + '><span class="wl">'+label+'</span><span class="wv">'+value+'</span></div>';
 }
 
 function renderScanner(data) {
