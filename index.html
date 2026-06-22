@@ -193,6 +193,9 @@ footer {
 .scan-tbl tr.selected td { background: rgba(88,166,255,0.12); outline: 1px solid #58a6ff; }
 .scan-tbl tr.target td { background: rgba(63,185,80,0.08); }
 .scan-tbl tr.secondary td { background: rgba(88,166,255,0.06); }
+/* WEM boundary line — the strike closest to WEM High (BCS) / WEM Low (BPS) */
+.scan-tbl tr.wem-line td { background: rgba(210,153,34,0.18); border-top: 1px solid #d29922; border-bottom: 1px solid #d29922; }
+.scan-tbl tr.wem-line td.wem-cell { color: #d29922; font-weight: 700; }
 .summary-block {
   background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
   padding: 12px 16px; font-family: 'SF Mono', 'Fira Code', monospace;
@@ -722,6 +725,27 @@ function wemRow(label, value, tooltip) {
   return '<div class="wem-row"' + tt + '><span class="wl">'+label+'</span><span class="wv">'+value+'</span></div>';
 }
 
+// Index of the spread whose sell strike is closest to `target` (a price level).
+function closestStrikeIdx(arr, target) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < arr.length; i++) {
+    const d = Math.abs(arr[i].sellK - target);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+// Slice `size` rows from `arr` centered on `anchorIdx`. Keeps `size` rows when
+// possible (sliding the window if the anchor is near an edge), so the anchored
+// row sits in the middle except when the data runs out on one side.
+function centerWindow(arr, anchorIdx, size) {
+  if (arr.length <= size) return arr;
+  let start = anchorIdx - Math.floor(size / 2);
+  if (start < 0) start = 0;
+  if (start + size > arr.length) start = arr.length - size;
+  return arr.slice(start, start + size);
+}
+
 function renderScanner(data) {
   const el = $('scannerContent');
   if (!data || !data.rows || data.rows.length < 2) {
@@ -769,9 +793,20 @@ function renderScanner(data) {
   // Sort by strike: BPS descending (closest to spot), BCS ascending (closest to spot)
   bps.sort((a,b) => b.sellK - a.sellK);
   bcs.sort((a,b) => a.sellK - b.sellK);
-  // Show top 25 spreads
-  let topBPS = bps.slice(0, 25);
-  let topBCS = bcs.slice(0, 25);
+  // Window 25 spreads centered on the WEM-boundary strike so it sits in the
+  // middle of each table: WEM High (upper) for BCS, WEM Low (lower) for BPS.
+  // Falls back to the closest-to-spot 25 if WEM could not be calculated.
+  let topBCS, topBPS;
+  if (data._wemUpper != null) {
+    const ai = closestStrikeIdx(bcs, data._wemUpper);
+    if (bcs[ai]) { bcs[ai].isWemLine = true; bcs[ai].wemLabel = 'WEM High'; }
+    topBCS = centerWindow(bcs, ai, 25);
+  } else { topBCS = bcs.slice(0, 25); }
+  if (data._wemLower != null) {
+    const ai = closestStrikeIdx(bps, data._wemLower);
+    if (bps[ai]) { bps[ai].isWemLine = true; bps[ai].wemLabel = 'WEM Low'; }
+    topBPS = centerWindow(bps, ai, 25);
+  } else { topBPS = bps.slice(0, 25); }
   // Show stale-data warning if fetched outside market hours
   const sn = $('staleNote');
   if (sn && data.fetched_at) {
@@ -803,22 +838,24 @@ function renderScanTable(rows, type) {
     const sec = r.credit >= 0.45 && r.credit < 0.55;
     const sel = (type==='bps' && selectedBPS && selectedBPS.sellK===r.sellK)
              || (type==='bcs' && selectedBCS && selectedBCS.sellK===r.sellK);
-    const cls = sel ? ' selected' : tgt ? ' target' : sec ? ' secondary' : '';
-    h += '<tr class="'+cls+'" onclick="selectSpread(\''+type+'\','+i+',this)" data-type="'+type+'" data-idx="'+i+'">';
+    let cls = sel ? 'selected' : tgt ? 'target' : sec ? 'secondary' : '';
+    if (r.isWemLine) cls += (cls ? ' ' : '') + 'wem-line';
+    const tip = r.isWemLine ? ' title="'+r.wemLabel+' line — strike closest to the WEM boundary"' : '';
+    h += '<tr class="'+cls+'"'+tip+' onclick="selectSpread(\''+type+'\','+r.sellK+',this)" data-type="'+type+'" data-sellk="'+r.sellK+'">';
     h += '<td>'+r.sellK+'</td><td>'+r.buyK+'</td>';
     h += '<td>$'+r.credit.toFixed(2)+'</td>';
     h += '<td>$'+r.maxLoss.toFixed(2)+'</td>';
     h += '<td>'+r.rr.toFixed(1)+':1</td>';
     h += '<td>'+(r.sellIV!=null?r.sellIV.toFixed(1)+'%':'-')+'</td>';
     h += '<td>'+Math.round(r.dist)+'</td>';
-    h += '<td>'+(r.outsideWEM?'Yes':'No')+'</td>';
+    h += '<td'+(r.isWemLine?' class="wem-cell"':'')+'>'+(r.outsideWEM?'Yes':'No')+(r.isWemLine?' ◄ WEM':'')+'</td>';
     h += '</tr>';
   });
   h += '</table>';
   return h;
 }
 
-function selectSpread(type, idx, tr) {
+function selectSpread(type, sellK, tr) {
   const data = currentChainData;
   if (!data) return;
   const spot = data.spot;
@@ -860,7 +897,7 @@ function selectSpread(type, idx, tr) {
   } else {
     arr.sort((a,b) => a.sellK - b.sellK);   // ascending: closest to spot first
   }
-  const s = arr[idx];
+  const s = arr.find(x => x.sellK === sellK);
   if (!s) return;
   // Toggle: clicking same row deselects
   if (type === 'bps') {
