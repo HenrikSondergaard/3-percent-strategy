@@ -193,9 +193,8 @@ footer {
 .scan-tbl tr.selected td { background: rgba(88,166,255,0.12); outline: 1px solid #58a6ff; }
 .scan-tbl tr.target td { background: rgba(63,185,80,0.08); }
 .scan-tbl tr.secondary td { background: rgba(88,166,255,0.06); }
-/* WEM boundary line — the strike closest to WEM High (BCS) / WEM Low (BPS) */
+/* WEM line — the Δ0.15 short strike each table is centered on */
 .scan-tbl tr.wem-line td { background: rgba(210,153,34,0.18); border-top: 1px solid #d29922; border-bottom: 1px solid #d29922; }
-.scan-tbl tr.wem-line td.wem-cell { color: #d29922; font-weight: 700; }
 .summary-block {
   background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
   padding: 12px 16px; font-family: 'SF Mono', 'Fira Code', monospace;
@@ -207,26 +206,6 @@ footer {
   color: #484f58; font-style: italic; font-family: inherit;
   font-size: 12px; padding: 20px; text-align: center;
 }
-.account-row {
-  display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
-}
-.account-row label { font-size: 11px; color: #8b949e; white-space: nowrap; }
-.account-row input {
-  width: 120px; background: #21262d; color: #c9d1d9;
-  border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px;
-  font-size: 12px; font-family: inherit;
-}
-.account-row input:focus { outline: none; border-color: #58a6ff; }
-.risk-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px;
-}
-.risk-box {
-  background: #21262d; border-radius: 4px; padding: 8px; text-align: center;
-}
-.risk-box .rl { font-size: 10px; color: #8b949e; text-transform: uppercase; }
-.risk-box .rv { font-size: 14px; font-weight: 700; color: #e6edf3; margin-top: 2px; }
-.risk-box .rv.warn { color: #d29922; }
-.risk-box .rv.danger { color: #f85149; }
 .chain-section-header {
   background: #161b22; border-bottom: 1px solid #30363d;
   padding: 8px 24px; font-size: 12px; color: #8b949e;
@@ -304,11 +283,6 @@ footer {
     <!-- Trade Summary -->
     <div class="strat-card full-width" id="summaryCard">
       <h3>Trade Setup Summary</h3>
-      <div class="account-row">
-        <label>Account size $</label>
-        <input type="number" id="accountSize" placeholder="100000" min="0">
-      </div>
-      <div class="risk-grid" id="riskGrid" style="display:none"></div>
       <div id="summaryContent"><div class="summary-placeholder">Select one BPS and one BCS from the scanner above to generate setup.</div></div>
     </div>
   </div>
@@ -446,7 +420,6 @@ strikeSel.onchange = () => { if (currentChainData) renderTable(currentChainData,
 $('chkCPI').onchange = renderGoNoGo;
 $('chkFOMC').onchange = renderGoNoGo;
 $('chkNFP').onchange = renderGoNoGo;
-$('accountSize').oninput = renderSummary;
 
 function loadChain() {
   const exp = expSel.value;
@@ -717,6 +690,8 @@ function renderWEM(data) {
   currentChainData._wem = (wemHigh + wemLow) / 2;
   currentChainData._wemUpper = upper;
   currentChainData._wemLower = lower;
+  currentChainData._wemCallStrike = bestCall.strike;
+  currentChainData._wemPutStrike = bestPut.strike;
   el.innerHTML = h;
 }
 
@@ -793,18 +768,19 @@ function renderScanner(data) {
   // Sort by strike: BPS descending (closest to spot), BCS ascending (closest to spot)
   bps.sort((a,b) => b.sellK - a.sellK);
   bcs.sort((a,b) => a.sellK - b.sellK);
-  // Window 25 spreads centered on the WEM-boundary strike so it sits in the
-  // middle of each table: WEM High (upper) for BCS, WEM Low (lower) for BPS.
-  // Falls back to the closest-to-spot 25 if WEM could not be calculated.
+  // Window 25 spreads centered on the Δ0.15 short strike (from the WEM panel)
+  // so it sits in the middle of each table: the call Δ0.15 strike for BCS, the
+  // put Δ0.15 strike for BPS. Falls back to the closest-to-spot 25 if those
+  // strikes are unavailable.
   let topBCS, topBPS;
-  if (data._wemUpper != null) {
-    const ai = closestStrikeIdx(bcs, data._wemUpper);
-    if (bcs[ai]) { bcs[ai].isWemLine = true; bcs[ai].wemLabel = 'WEM High'; }
+  if (data._wemCallStrike != null) {
+    const ai = closestStrikeIdx(bcs, data._wemCallStrike);
+    if (bcs[ai]) bcs[ai].isWemLine = true;
     topBCS = centerWindow(bcs, ai, 25);
   } else { topBCS = bcs.slice(0, 25); }
-  if (data._wemLower != null) {
-    const ai = closestStrikeIdx(bps, data._wemLower);
-    if (bps[ai]) { bps[ai].isWemLine = true; bps[ai].wemLabel = 'WEM Low'; }
+  if (data._wemPutStrike != null) {
+    const ai = closestStrikeIdx(bps, data._wemPutStrike);
+    if (bps[ai]) bps[ai].isWemLine = true;
     topBPS = centerWindow(bps, ai, 25);
   } else { topBPS = bps.slice(0, 25); }
   // Show stale-data warning if fetched outside market hours
@@ -840,15 +816,14 @@ function renderScanTable(rows, type) {
              || (type==='bcs' && selectedBCS && selectedBCS.sellK===r.sellK);
     let cls = sel ? 'selected' : tgt ? 'target' : sec ? 'secondary' : '';
     if (r.isWemLine) cls += (cls ? ' ' : '') + 'wem-line';
-    const tip = r.isWemLine ? ' title="'+r.wemLabel+' line — strike closest to the WEM boundary"' : '';
-    h += '<tr class="'+cls+'"'+tip+' onclick="selectSpread(\''+type+'\','+r.sellK+',this)" data-type="'+type+'" data-sellk="'+r.sellK+'">';
+    h += '<tr class="'+cls+'" onclick="selectSpread(\''+type+'\','+r.sellK+',this)" data-type="'+type+'" data-sellk="'+r.sellK+'">';
     h += '<td>'+r.sellK+'</td><td>'+r.buyK+'</td>';
     h += '<td>$'+r.credit.toFixed(2)+'</td>';
     h += '<td>$'+r.maxLoss.toFixed(2)+'</td>';
     h += '<td>'+r.rr.toFixed(1)+':1</td>';
     h += '<td>'+(r.sellIV!=null?r.sellIV.toFixed(1)+'%':'-')+'</td>';
     h += '<td>'+Math.round(r.dist)+'</td>';
-    h += '<td'+(r.isWemLine?' class="wem-cell"':'')+'>'+(r.outsideWEM?'Yes':'No')+(r.isWemLine?' ◄ WEM':'')+'</td>';
+    h += '<td>'+(r.outsideWEM?'Yes':'No')+'</td>';
     h += '</tr>';
   });
   h += '</table>';
@@ -912,9 +887,7 @@ function selectSpread(type, sellK, tr) {
 
 function renderSummary() {
   const el = $('summaryContent');
-  const rg = $('riskGrid');
   if (!selectedBPS && !selectedBCS) {
-    rg.style.display = 'none';
     el.innerHTML = '<div class="summary-placeholder">Select one BPS and one BCS from the scanner above to generate setup.</div>';
     return;
   }
@@ -964,34 +937,10 @@ function renderSummary() {
     if (selectedBCS) t += '  BCS stop: $' + (selectedBCS.credit * 3).toFixed(2) + '\n';
   }
   el.innerHTML = '<div class="summary-block">' + escHtml(t) + '</div>';
-  // Account risk (SPX multiplier = $100/point)
-  const acctVal = parseFloat($('accountSize').value);
-  if (acctVal > 0 && (selectedBPS || selectedBCS)) {
-    rg.style.display = 'grid';
-    const totCredit = (selectedBPS ? selectedBPS.credit : 0) + (selectedBCS ? selectedBCS.credit : 0);
-    const totLoss = (selectedBPS ? selectedBPS.maxLoss : 0) + (selectedBCS ? selectedBCS.maxLoss : 0);
-    const creditDollar = totCredit * 100; // $100/point for SPX
-    const lossDollar = totLoss * 100;
-    const creditPct = (creditDollar / acctVal * 100);
-    const lossPct = (lossDollar / acctVal * 100);
-    const contracts = Math.floor(80 / lossPct);
-    rg.innerHTML =
-      riskBox('Credit $', '$' + fmtNum(creditDollar, 0), '') +
-      riskBox('Max Loss $', '$' + fmtNum(lossDollar, 0), lossDollar > acctVal*0.3 ? 'danger' : lossDollar > acctVal*0.15 ? 'warn' : '') +
-      riskBox('Credit %', creditPct.toFixed(2) + '%', creditPct > 10 ? 'warn' : '') +
-      riskBox('Max Loss %', lossPct.toFixed(2) + '%', lossPct > 50 ? 'danger' : lossPct > 30 ? 'warn' : '') +
-      riskBox('Contracts (80% rule)', contracts < 1 ? '0' : contracts, '') +
-      riskBox('Actual Loss %', (lossPct * Math.max(contracts,1)).toFixed(1) + '%', lossPct * Math.max(contracts,1) > 80 ? 'danger' : '');
-  } else {
-    rg.style.display = 'none';
-  }
 }
 
 function pad(s, n) { n = n || 16; return (s + '                ').substring(0, n); }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function riskBox(label, value, cls) {
-  return '<div class="risk-box"><div class="rl">'+label+'</div><div class="rv '+cls+'">'+value+'</div></div>';
-}
 
 // ── Helpers ──
 function th(text, cls) { return '<th class="' + cls + '">' + text + '</th>'; }
