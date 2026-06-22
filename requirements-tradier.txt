@@ -1,0 +1,5 @@
+# Dependencies for tradier_to_firebase.py (runs on the always-on server).
+# Install in a venv on the Ubuntu box:
+#   python3 -m venv venv && ./venv/bin/pip install -r requirements-tradier.txt
+requests>=2.31
+firebase-admin>=6.5

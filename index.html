@@ -254,15 +254,9 @@ footer {
     <div style="align-self:flex-end">
       <button class="btn-load" id="goBtn" disabled>Load</button>
     </div>
-    <div style="align-self:flex-end">
-      <button class="btn-refresh" id="refreshBtn" title="Fetch fresh data from Yahoo Finance">
-        <span class="spinner"></span>
-        ↻ Refresh Data
-      </button>
-    </div>
   </div>
   <div class="spot">
-    <div class="label">SPX SPOT (estimated)</div>
+    <div class="label">SPX SPOT</div>
     <div id="spotPrice">--</div>
   </div>
 </div>
@@ -271,7 +265,7 @@ footer {
   <span><span class="dot dot-call"></span> Calls</span>
   <span><span class="dot dot-put"></span> Puts</span>
   <span><span class="dot dot-atm"></span> ATM row</span>
-  <span>IV: Yahoo Finance</span>
+  <span>IV: Tradier (mid)</span>
   <span id="refreshStatus" class="refresh-status"></span>
 </div>
 
@@ -326,28 +320,31 @@ footer {
 </div>
 
 <footer>
-  <span>Data: Yahoo Finance / yfinance</span>
+  <span>Data: Tradier (live) → Firestore</span>
   <span id="footerInfo"></span>
 </footer>
+
+<!-- Firebase (compat SDK) + public web config from config.js -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
 
 <script>
 const $ = id => document.getElementById(id);
 const expSel = $('expSelect');
 const strikeSel = $('strikeSelect');
 const goBtn = $('goBtn');
-const refreshBtn = $('refreshBtn');
 const content = $('content');
 const spotEl = $('spotPrice');
 const footerInfo = $('footerInfo');
 const refreshStatus = $('refreshStatus');
 
-// Config: set WORKER_URL in config.js or define here
-let WORKER_URL = ''; // will be loaded from config.js if available
+// ── Firebase / Firestore (initialised in the init block below) ──
+let db = null;
 
-// ── Helpers ──
-// ── Data cache ──
+// ── Data state ──
 let allExpirations = [];
-let chainCache = {};  // expiration -> chain data
+let chainUnsub = null;   // active per-chain Firestore listener
 
 // ── Strategy state ──
 let vixData = null;   // { vix, vix_change_pct }
@@ -356,43 +353,54 @@ let selectedBPS = null;  // { sellStrike, buyStrike, credit, ... }
 let selectedBCS = null;
 let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
 
-// ── Load config then init ──
+// ── Init: VIX + calendar from repo, expirations + chains live from Firestore ──
 (async () => {
-  try {
-    const r = await fetch('config.js');
-    if (r.ok) {
-      const text = await r.text();
-      const match = text.match(/WORKER_URL\s*=\s*'([^']*)'/);
-      if (match) WORKER_URL = match[1];
-    }
-  } catch(e) {}
+  // Economic calendar still comes from the repo (GitHub Actions -> data/calendar.json)
+  try { const cr = await fetch('data/calendar.json'); if (cr.ok) calendarData = await cr.json(); } catch(e) {}
 
-  try {
-    const r = await fetch('data/expirations.json');
-    if (!r.ok) throw new Error('No data');
-    const data = await r.json();
-    const fetchedAt = data.fetched_at || null;
+  if (typeof firebase === 'undefined') {
+    content.innerHTML = '<div class="error">Could not load the Firebase SDK (offline?).</div>';
+    refreshStatus.textContent = 'SDK load error';
+    refreshStatus.className = 'refresh-status error';
+    return;
+  }
+  if (typeof firebaseConfig === 'undefined' || firebaseConfig.apiKey === 'REPLACE_ME') {
+    content.innerHTML = '<div class="error">Firebase not configured. Set your project config in config.js (see README).</div>';
+    refreshStatus.textContent = 'Not configured';
+    refreshStatus.className = 'refresh-status error';
+    return;
+  }
+
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+
+  // VIX gauge (live) from Firestore.
+  db.collection('meta').doc('vix').onSnapshot(snap => {
+    if (snap.exists) { vixData = snap.data(); if (currentChainData) renderGoNoGo(); }
+  }, () => {});
+
+  // Expirations list (live): refreshes the dropdown whenever the fetch script runs.
+  db.collection('meta').doc('expirations').onSnapshot(snap => {
+    if (!snap.exists) {
+      content.innerHTML = '<div class="error">No data in Firestore yet. Run the Tradier fetch script on your server.</div>';
+      refreshStatus.textContent = 'No data';
+      refreshStatus.className = 'refresh-status error';
+      return;
+    }
+    const data = snap.data();
+    const prev = expSel.value;
     allExpirations = data.expirations || [];
     populateExpirations(allExpirations);
-    refreshStatus.textContent = fetchedAt ? 'Data: ' + new Date(fetchedAt).toLocaleString() : '';
+    if (prev && allExpirations.includes(prev)) expSel.value = prev;  // keep the user's selection
+    refreshStatus.textContent = data.fetched_at ? 'Data: ' + new Date(data.fetched_at).toLocaleString() : '';
     refreshStatus.className = 'refresh-status ok';
     goBtn.disabled = false;
-    // Load VIX data
-    try {
-      const vr = await fetch('data/vix.json');
-      if (vr.ok) vixData = await vr.json();
-    } catch(e) {}
-    // Load economic calendar
-    try {
-      const cr = await fetch('data/calendar.json');
-      if (cr.ok) calendarData = await cr.json();
-    } catch(e) {}
-    loadChain();
-  } catch(e) {
-    content.innerHTML = '<div class="error">No data yet. Click "Refresh Data" to fetch options chain from Yahoo Finance.</div>';
-    refreshStatus.textContent = 'No cached data';
+    if (!currentChainData) loadChain();  // initial chain load
+  }, err => {
+    content.innerHTML = '<div class="error">Firestore error: ' + err.message + '</div>';
+    refreshStatus.textContent = 'Connection error';
     refreshStatus.className = 'refresh-status error';
-  }
+  });
 })();
 
 function populateExpirations(exps) {
@@ -431,42 +439,38 @@ function nearestFriday() {
 // ── Event handlers ──
 goBtn.onclick = loadChain;
 expSel.onchange = loadChain;
-strikeSel.onchange = loadChain;
-refreshBtn.onclick = triggerRefresh;
+strikeSel.onchange = () => { if (currentChainData) renderTable(currentChainData, strikeSel.value); else loadChain(); };
 $('chkCPI').onchange = renderGoNoGo;
 $('chkFOMC').onchange = renderGoNoGo;
 $('chkNFP').onchange = renderGoNoGo;
 $('accountSize').oninput = renderSummary;
 
-async function loadChain() {
+function loadChain() {
   const exp = expSel.value;
   if (!exp) return;
-  const strikes = strikeSel.value;
   goBtn.disabled = true;
   content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading chain...</div>';
 
-  try {
-    let data;
-    if (chainCache[exp]) {
-      data = chainCache[exp];
-    } else {
-      const r = await fetch('data/chain_' + exp + '.json');
-      if (!r.ok) throw new Error('Chain not found for ' + exp);
-      data = await r.json();
-      chainCache[exp] = data;
+  // Live listener: the table + strategy auto-update whenever the fetch script
+  // writes fresh data for this expiration (no polling, no page reload).
+  if (chainUnsub) { chainUnsub(); chainUnsub = null; }
+  chainUnsub = db.collection('chains').doc(exp).onSnapshot(snap => {
+    goBtn.disabled = false;
+    if (!snap.exists) {
+      content.innerHTML = '<div class="error">No chain for ' + exp + ' in Firestore yet.</div>';
+      return;
     }
-
+    const data = snap.data();
     spotEl.textContent = data.spot ? fmtNum(data.spot, 2) : '--';
     currentChainData = data;
-    renderTable(data, strikes);
+    renderTable(data, strikeSel.value);
     renderStrategy(data);
     const dte = Math.round((new Date(exp + 'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
     footerInfo.textContent = data.rows.length + ' strikes | ' + fmtExp(data.expiration) + ' | DTE: ' + dte;
-  } catch(e) {
-    content.innerHTML = '<div class="error">Error: ' + e.message + '. Try refreshing data.</div>';
-  } finally {
+  }, err => {
     goBtn.disabled = false;
-  }
+    content.innerHTML = '<div class="error">Error loading chain: ' + err.message + '</div>';
+  });
 }
 
 function renderTable(data, strikeLimit) {
@@ -526,111 +530,6 @@ function renderTable(data, strikeLimit) {
 
   h += '</tbody></table>';
   content.innerHTML = h;
-}
-
-// ── Refresh trigger ──
-let pollTimer = null;
-let refreshTriggeredAt = 0;
-
-async function triggerRefresh() {
-  if (!WORKER_URL) {
-    alert('Refresh not configured yet. Set WORKER_URL in config.js. See README for setup instructions.');
-    return;
-  }
-  // Clear any previous polling
-  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-
-  refreshBtn.classList.add('loading');
-  refreshBtn.disabled = true;
-  refreshStatus.textContent = 'Triggering data refresh...';
-  refreshStatus.className = 'refresh-status pending';
-
-  const selectedExp = expSel.value;
-
-  try {
-    const body = selectedExp ? JSON.stringify({ expiration: selectedExp }) : '{}';
-    const r = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
-    const data = await r.json();
-    if (r.ok && data.status === 'triggered') {
-      refreshTriggeredAt = Date.now();
-      refreshStatus.textContent = data.message || 'Refresh triggered. Waiting for update...';
-      refreshStatus.className = 'refresh-status pending';
-      // Start polling after 30s
-      pollTimer = setTimeout(pollForUpdate, 30000);
-    } else {
-      refreshStatus.textContent = 'Error: ' + (data.error || 'Unknown error');
-      refreshStatus.className = 'refresh-status error';
-    }
-  } catch(e) {
-    refreshStatus.textContent = 'Error contacting refresh endpoint: ' + e.message;
-    refreshStatus.className = 'refresh-status error';
-  } finally {
-    refreshBtn.classList.remove('loading');
-    refreshBtn.disabled = false;
-  }
-}
-
-async function pollForUpdate() {
-  const MAX_POLL_MS = 5 * 60 * 1000; // give up after 5 minutes
-  const POLL_INTERVAL = 30000; // check every 30s
-
-  if (Date.now() - refreshTriggeredAt > MAX_POLL_MS) {
-    refreshStatus.textContent = 'Timed out waiting for update. Try again.';
-    refreshStatus.className = 'refresh-status error';
-    pollTimer = null;
-    return;
-  }
-
-  try {
-    const targetExp = expSel.value;
-    const url = targetExp
-      ? 'data/chain_' + targetExp + '.json?' + Date.now()
-      : 'data/expirations.json?' + Date.now();
-    const r = await fetch(url);
-    if (!r.ok) throw new Error('not found');
-    const data = await r.json();
-
-    // Check if data is newer than when we triggered the refresh
-    if (data.fetched_at || data.spot) {
-      const ts = data.fetched_at ? new Date(data.fetched_at).getTime() : 0;
-      if (ts > refreshTriggeredAt || Date.now() - ts < 120000) {
-        // Fresh data! Reload everything
-        chainCache = {};
-        // Also reload expirations
-        const expR = await fetch('data/expirations.json?' + Date.now());
-        if (expR.ok) {
-          const expData = await expR.json();
-          allExpirations = expData.expirations || [];
-          populateExpirations(allExpirations);
-        }
-        // Re-fetch VIX data so Go/No-Go stays current
-        try {
-          const vr = await fetch('data/vix.json?' + Date.now());
-          if (vr.ok) vixData = await vr.json();
-        } catch(e) {}
-        // Re-fetch economic calendar
-        try {
-          const cr = await fetch('data/calendar.json?' + Date.now());
-          if (cr.ok) calendarData = await cr.json();
-        } catch(e) {}
-        refreshStatus.textContent = 'Data updated!';
-        refreshStatus.className = 'refresh-status ok';
-        loadChain();
-        pollTimer = null;
-        return;
-      }
-    }
-
-    // Not yet, keep polling
-    refreshStatus.textContent = 'Waiting for update...';
-    refreshStatus.className = 'refresh-status pending';
-    pollTimer = setTimeout(pollForUpdate, POLL_INTERVAL);
-  } catch(e) {
-    // File might not exist yet, keep polling
-    refreshStatus.textContent = 'Waiting for update...';
-    refreshStatus.className = 'refresh-status pending';
-    pollTimer = setTimeout(pollForUpdate, POLL_INTERVAL);
-  }
 }
 
 // ── Strategy Functions ──
@@ -747,50 +646,67 @@ function renderGoNoGo() {
   $('eventToggles').style.display = (calendarData && calendarData.events && calendarData.events.length) ? 'none' : '';
 }
 
+// WEM (asymmetric, delta-based):
+//   High side uses the IV of the CALL whose delta is closest to +0.15
+//   Low side  uses the IV of the PUT  whose delta is closest to -0.15
+//   WEM = Spot x (IV/100) x sqrt(DTE/252), applied separately to each side.
+const WEM_TARGET_DELTA = 0.15;
+
 function renderWEM(data) {
   const el = $('wemContent');
   if (!data || !data.rows) { el.innerHTML = '<span style="color:#484f58">No data</span>'; return; }
   const spot = data.spot, ttm = data.ttm;
   if (!spot || !ttm) { el.innerHTML = '<span style="color:#484f58">Missing spot/ttm</span>'; return; }
   const dte = Math.max(1, Math.round(ttm * 365.25));
-  // Find strikes closest to ATM with valid IV for WEM calculation
-  let bestCall = null, bestPut = null, bestCDist = 999, bestPDist = 999;
+
+  // Pick the call / put whose delta is nearest the target (needs delta + IV).
+  let bestCall = null, bestPut = null, cDist = Infinity, pDist = Infinity;
   data.rows.forEach(r => {
-    if (r.call && r.call.iv != null) {
-      const d = Math.abs(r.strike - spot);
-      if (d < bestCDist) { bestCDist = d; bestCall = r; }
+    if (r.call && r.call.iv != null && r.call.delta != null) {
+      const d = Math.abs(r.call.delta - WEM_TARGET_DELTA);
+      if (d < cDist) { cDist = d; bestCall = r; }
     }
-    if (r.put && r.put.iv != null) {
-      const d = Math.abs(r.strike - spot);
-      if (d < bestPDist) { bestPDist = d; bestPut = r; }
+    if (r.put && r.put.iv != null && r.put.delta != null) {
+      const d = Math.abs(Math.abs(r.put.delta) - WEM_TARGET_DELTA);
+      if (d < pDist) { pDist = d; bestPut = r; }
     }
   });
-  let wem = null, avgIV = null;
-  if (bestCall && bestPut && bestCall.call.iv != null && bestPut.put.iv != null) {
-    avgIV = ((bestCall.call.iv + bestPut.put.iv) / 2) / 100;
-    wem = spot * avgIV * Math.sqrt(dte / 252);
+  if (!bestCall || !bestPut) {
+    el.innerHTML = '<span style="color:#484f58">Cannot calculate WEM (needs delta + IV)</span>';
+    return;
   }
-  if (wem == null) { el.innerHTML = '<span style="color:#484f58">Cannot calculate WEM</span>'; return; }
-  const upper = spot + wem, lower = spot - wem, wemPct = (wem / spot * 100);
+
+  const ivHigh = bestCall.call.iv, ivLow = bestPut.put.iv;
+  const wemHigh = spot * (ivHigh / 100) * Math.sqrt(dte / 252);
+  const wemLow  = spot * (ivLow  / 100) * Math.sqrt(dte / 252);
+  const upper = spot + wemHigh, lower = spot - wemLow;
+  const dLabel = WEM_TARGET_DELTA.toFixed(2);
+
   let h = '';
   h += wemRow('Spot', fmtNum(spot, 2));
   h += wemRow('DTE', dte);
-  h += wemRow('ATM IV (avg)', fmtNum(avgIV*100, 1) + '%');
-  h += wemRow('WEM', '\u00B1' + fmtNum(wem, 1) + ' pts (' + fmtNum(wemPct, 2) + '%)',
-    'WEM = Spot \u00D7 IV \u00D7 \u221A(DTE/252)\n= ' + fmtNum(spot,2) + ' \u00D7 ' + fmtNum(avgIV*100,1) + '% \u00D7 \u221A(' + dte + '/252)\n= \u00B1' + fmtNum(wem, 1) + ' pts');
+  h += wemRow('Call \u0394' + dLabel, fmtNum(bestCall.strike, 0) + '  IV ' + fmtNum(ivHigh, 1) + '%  (\u0394 ' + fmtNum(bestCall.call.delta, 3) + ')');
+  h += wemRow('Put \u0394' + dLabel,  fmtNum(bestPut.strike, 0)  + '  IV ' + fmtNum(ivLow, 1)  + '%  (\u0394 ' + fmtNum(bestPut.put.delta, 3) + ')');
+  h += wemRow('WEM High', '+' + fmtNum(wemHigh, 1) + ' pts (' + fmtNum(wemHigh / spot * 100, 2) + '%)',
+    'WEM High = Spot \u00D7 IV(call \u0394' + dLabel + ') \u00D7 \u221A(DTE/252)\n= ' + fmtNum(spot,2) + ' \u00D7 ' + fmtNum(ivHigh,1) + '% \u00D7 \u221A(' + dte + '/252)\n= +' + fmtNum(wemHigh,1) + ' pts');
+  h += wemRow('WEM Low', '\u2212' + fmtNum(wemLow, 1) + ' pts (' + fmtNum(wemLow / spot * 100, 2) + '%)',
+    'WEM Low = Spot \u00D7 IV(put \u0394' + dLabel + ') \u00D7 \u221A(DTE/252)\n= ' + fmtNum(spot,2) + ' \u00D7 ' + fmtNum(ivLow,1) + '% \u00D7 \u221A(' + dte + '/252)\n= \u2212' + fmtNum(wemLow,1) + ' pts');
   h += wemRow('Upper', fmtNum(upper, 1),
-    'Upper = Spot + WEM\n= ' + fmtNum(spot,2) + ' + ' + fmtNum(wem,1) + '\n= ' + fmtNum(upper,1));
+    'Upper = Spot + WEM High\n= ' + fmtNum(spot,2) + ' + ' + fmtNum(wemHigh,1) + '\n= ' + fmtNum(upper,1));
   h += wemRow('Lower', fmtNum(lower, 1),
-    'Lower = Spot - WEM\n= ' + fmtNum(spot,2) + ' - ' + fmtNum(wem,1) + '\n= ' + fmtNum(lower,1));
-  // Visual bar
-  const range = wem * 3;
-  const leftPct = ((spot - lower) / (range * 2)) * 100;
-  const widthPct = ((upper - lower) / (range * 2)) * 100;
-  const spotPct = 50;
-  h += '<div class="wem-bar"><div class="fill" style="left:'+leftPct+'%;width:'+widthPct+'%"></div>';
-  h += '<div class="spot-marker" style="left:'+spotPct+'%"></div></div>';
-  // Store WEM for scanner
-  currentChainData._wem = wem;
+    'Lower = Spot \u2212 WEM Low\n= ' + fmtNum(spot,2) + ' \u2212 ' + fmtNum(wemLow,1) + '\n= ' + fmtNum(lower,1));
+
+  // Visual bar (asymmetric around spot)
+  const maxMove = Math.max(wemHigh, wemLow) * 1.5 || 1;
+  const lowerPct = 50 - (wemLow / maxMove) * 50;
+  const upperPct = 50 + (wemHigh / maxMove) * 50;
+  h += '<div class="wem-bar"><div class="fill" style="left:'+lowerPct+'%;width:'+(upperPct-lowerPct)+'%"></div>';
+  h += '<div class="spot-marker" style="left:50%"></div></div>';
+
+  // Store WEM for scanner + summary
+  currentChainData._wemHigh = wemHigh;
+  currentChainData._wemLow = wemLow;
+  currentChainData._wem = (wemHigh + wemLow) / 2;
   currentChainData._wemUpper = upper;
   currentChainData._wemLower = lower;
   el.innerHTML = h;
@@ -971,8 +887,9 @@ function renderSummary() {
   t += pad('IRON CONDOR SETUP',40) + ' -- Week ending ' + expLabel + '\n';
   t += '========================================\n';
   t += pad('SPX Spot:') + fmtNum(d.spot,2) + '  |  VIX: ' + (vix!=null ? fmtNum(vix,2) : 'N/A') + '\n';
-  if (d._wem) {
-    t += pad('WEM:') + '\u00B1' + fmtNum(d._wem,1) + ' pts (' + fmtNum(d._wemLower,0) + ' - ' + fmtNum(d._wemUpper,0) + ')\n';
+  if (d._wemUpper && d._wemLower) {
+    t += pad('WEM:') + fmtNum(d._wemLower,0) + ' / ' + fmtNum(d._wemUpper,0)
+       + '  (\u2212' + fmtNum(d._wemLow,1) + ' / +' + fmtNum(d._wemHigh,1) + ' pts)\n';
   }
   t += pad('DTE:') + dte + '  |  Expiration: Fri ' + expLabel + '\n';
   if (selectedBPS) {

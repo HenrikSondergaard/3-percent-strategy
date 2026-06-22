@@ -1,3 +1,4 @@
-yfinance>=0.2.36
+# Dependencies for fetch_calendar.py (run by GitHub Actions).
+# SPX chains + VIX come from Tradier via tradier_to_firebase.py (requirements-tradier.txt).
 beautifulsoup4>=4.12
 requests>=2.31
