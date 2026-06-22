@@ -727,7 +727,6 @@ function renderScanner(data) {
     el.innerHTML = '<span style="color:#484f58">Not enough data</span>'; return;
   }
   const spot = data.spot;
-  const wemL = data._wemLower || 0, wemU = data._wemUpper || 999999;
   const strikes = data.rows.map(r => r.strike);
   const byStrike = {};
   data.rows.forEach(r => { byStrike[r.strike] = r; });
@@ -744,8 +743,7 @@ function renderScanner(data) {
           const maxLoss = Math.max(10 - credit, 0);
           const rr = credit / maxLoss;
           bps.push({ sellK: K, buyK: Klow, credit, maxLoss, rr,
-            sellIV: sell.iv,
-            outsideWEM: K < wemL, dist: spot - K });
+            sellIV: sell.iv, sellDelta: sell.delta });
         }
       }
     }
@@ -759,8 +757,7 @@ function renderScanner(data) {
           const maxLoss = Math.max(10 - credit, 0);
           const rr = credit / maxLoss;
           bcs.push({ sellK: K, buyK: Khigh, credit, maxLoss, rr,
-            sellIV: sell.iv,
-            outsideWEM: K > wemU, dist: K - spot });
+            sellIV: sell.iv, sellDelta: sell.delta });
         }
       }
     }
@@ -807,7 +804,7 @@ function renderScanner(data) {
 function renderScanTable(rows, type) {
   if (!rows.length) return '<div style="color:#484f58;font-size:11px">No spreads found</div>';
   let h = '<table class="scan-tbl"><tr>';
-  h += '<th>Sell</th><th>Buy</th><th>Credit</th><th>MaxLoss</th><th>R/R</th><th>Sell IV%</th><th>Dist</th><th>WEM?</th>';
+  h += '<th>Sell</th><th>Buy</th><th>Credit</th><th>MaxLoss</th><th>Sell IV%</th><th>Delta</th>';
   h += '</tr>';
   rows.forEach((r, i) => {
     const tgt = r.credit >= 0.55 && r.credit <= 0.65;
@@ -820,10 +817,8 @@ function renderScanTable(rows, type) {
     h += '<td>'+r.sellK+'</td><td>'+r.buyK+'</td>';
     h += '<td>$'+r.credit.toFixed(2)+'</td>';
     h += '<td>$'+r.maxLoss.toFixed(2)+'</td>';
-    h += '<td>'+r.rr.toFixed(1)+':1</td>';
     h += '<td>'+(r.sellIV!=null?r.sellIV.toFixed(1)+'%':'-')+'</td>';
-    h += '<td>'+Math.round(r.dist)+'</td>';
-    h += '<td>'+(r.outsideWEM?'Yes':'No')+'</td>';
+    h += '<td>'+(r.sellDelta!=null?r.sellDelta.toFixed(2):'-')+'</td>';
     h += '</tr>';
   });
   h += '</table>';
@@ -834,7 +829,6 @@ function selectSpread(type, sellK, tr) {
   const data = currentChainData;
   if (!data) return;
   const spot = data.spot;
-  const wemL = data._wemLower || 0, wemU = data._wemUpper || 999999;
   const strikes = data.rows.map(r => r.strike);
   const byStrike = {};
   data.rows.forEach(r => { byStrike[r.strike] = r; });
@@ -850,7 +844,6 @@ function selectSpread(type, sellK, tr) {
         const credit = byStrike[K].put.bid - byStrike[Klow].put.ask;
         if (credit > 0.05) arr.push({ sellK: K, buyK: Klow, credit, maxLoss: Math.max(10-credit,0),
           rr: credit/Math.max(10-credit,0.01), sellIV: byStrike[K].put.iv,
-          outsideWEM: K < wemL, dist: spot - K,
           sellBid: byStrike[K].put.bid, buyAsk: byStrike[Klow].put.ask });
       }
     } else {
@@ -861,7 +854,6 @@ function selectSpread(type, sellK, tr) {
         const credit = byStrike[K].call.bid - byStrike[Khigh].call.ask;
         if (credit > 0.05) arr.push({ sellK: K, buyK: Khigh, credit, maxLoss: Math.max(10-credit,0),
           rr: credit/Math.max(10-credit,0.01), sellIV: byStrike[K].call.iv,
-          outsideWEM: K > wemU, dist: K - spot,
           sellBid: byStrike[K].call.bid, buyAsk: byStrike[Khigh].call.ask });
       }
     }
