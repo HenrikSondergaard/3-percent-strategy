@@ -1,0 +1,3 @@
+# Deps for ibkr_to_firebase.py / ibkr_probe.py (the IBKR data fetcher).
+ib_async>=2.0.1      # maintained successor to ib_insync (TWS API client)
+firebase-admin>=6.5  # Firestore Admin SDK (writes)

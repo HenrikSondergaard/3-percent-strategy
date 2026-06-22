@@ -1,0 +1,28 @@
+# systemd unit for the IBKR -> Firestore fetcher (persistent streaming service).
+#
+# Install:
+#   sudo cp ibkr-fetcher.service /etc/systemd/system/
+#   # edit User=, WorkingDirectory=, ExecStart= and EnvironmentFile= paths below
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ibkr-fetcher
+#   journalctl -u ibkr-fetcher -f      # follow logs
+#
+# This replaces the old Tradier cron line (remove it from crontab).
+# It depends on the Dockerised IB Gateway (docker-compose.yml) being up.
+
+[Unit]
+Description=IBKR SPX options -> Firestore (streaming)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=you
+WorkingDirectory=/home/you/3-percent-strategy
+EnvironmentFile=/home/you/3-percent-strategy/ibkr-fetcher.env
+ExecStart=/home/you/3-percent-strategy/venv/bin/python /home/you/3-percent-strategy/ibkr_to_firebase.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
