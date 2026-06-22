@@ -35,12 +35,23 @@ import argparse
 import os
 import sys
 import time
-from datetime import datetime, timezone
 
 import requests
 
-# firebase_admin is imported lazily in init_firestore() so the data-transform code
-# stays importable/testable without the dependency installed.
+# Source-agnostic schema + Firestore layer (shared with ibkr_to_firebase.py).
+from store import (
+    approx_spot,
+    build_chain_doc,
+    cleanup_stale,
+    init_firestore,
+    itm_flag,
+    now_iso,
+    option_dict,
+    safe_float,
+    write_chain,
+    write_expirations,
+    write_vix,
+)
 
 # ── Configuration ────────────────────────────────────────────────────────────
 BASE_URL = "https://api.tradier.com/v1"          # live (delayed without a data sub)
@@ -133,59 +144,30 @@ def get_vix() -> dict | None:
         return {
             "vix": round(last, 2),
             "vix_change_pct": safe_float(q.get("change_percentage")),
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "fetched_at": now_iso(),
         }
     except Exception as e:
         print(f"  WARNING: could not fetch VIX: {e}")
         return None
 
 
-# ── Transform ────────────────────────────────────────────────────────────────
-def safe_float(v, default=None):
-    if v is None:
-        return default
-    try:
-        val = float(v)
-        if val != val:  # NaN
-            return default
-        return round(val, 4)
-    except (ValueError, TypeError):
-        return default
-
-
+# ── Transform (Tradier adapter -> canonical schema in store.py) ───────────────
 def build_option(o: dict | None, spot: float, is_call: bool) -> dict | None:
     if not o:
         return None
     g = o.get("greeks") or {}
     mid_iv = safe_float(g.get("mid_iv"))
-    delta = safe_float(g.get("delta"))
     strike = safe_float(o.get("strike"))
-    itm = (strike < spot) if is_call else (strike > spot)
-    return {
-        "bid": safe_float(o.get("bid")),
-        "ask": safe_float(o.get("ask")),
-        "last": safe_float(o.get("last")),
-        "volume": safe_float(o.get("volume"), 0),
-        "oi": safe_float(o.get("open_interest"), 0),
-        "iv": round(mid_iv * 100, 2) if mid_iv else None,
-        "delta": delta,
-        "itm": bool(itm),
-    }
-
-
-def approx_spot(calls: dict, puts: dict) -> float | None:
-    """Estimate spot via put-call parity midpoint when no quote is available."""
-    mids = []
-    for strike in set(calls) & set(puts):
-        c_last = safe_float(calls[strike].get("last"))
-        p_last = safe_float(puts[strike].get("last"))
-        if c_last is not None and p_last is not None:
-            mids.append(strike + c_last - p_last)
-    if not mids:
-        all_strikes = sorted(set(calls) | set(puts))
-        return all_strikes[len(all_strikes) // 2] if all_strikes else None
-    mids.sort()
-    return round(mids[len(mids) // 2], 2)
+    return option_dict(
+        bid=o.get("bid"),
+        ask=o.get("ask"),
+        last=o.get("last"),
+        volume=o.get("volume"),
+        oi=o.get("open_interest"),
+        iv_pct=(mid_iv * 100 if mid_iv else None),
+        delta=g.get("delta"),
+        itm=itm_flag(strike, spot, is_call),
+    )
 
 
 def build_chain(symbol: str, expiration: str, spot: float | None) -> dict:
@@ -196,10 +178,10 @@ def build_chain(symbol: str, expiration: str, spot: float | None) -> dict:
     puts.pop(None, None)
 
     if spot is None:
-        spot = approx_spot(calls, puts)
-
-    exp_date = datetime.strptime(expiration, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    ttm = max((exp_date - datetime.now(timezone.utc)).total_seconds() / (365.25 * 86400), 1e-6)
+        spot = approx_spot(
+            {k: v.get("last") for k, v in calls.items()},
+            {k: v.get("last") for k, v in puts.items()},
+        )
 
     strikes = sorted(set(calls) | set(puts))
     rows = [
@@ -210,57 +192,7 @@ def build_chain(symbol: str, expiration: str, spot: float | None) -> dict:
         }
         for k in strikes
     ]
-    return {
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "spot": spot,
-        "expiration": expiration,
-        "ttm": round(ttm, 6),
-        "rows": rows,
-    }
-
-
-# ── Firestore ────────────────────────────────────────────────────────────────
-def init_firestore():
-    try:
-        import firebase_admin
-        from firebase_admin import credentials, firestore
-    except ImportError:
-        sys.exit("Missing dependency: pip install firebase-admin  (see requirements-tradier.txt)")
-
-    if not firebase_admin._apps:
-        cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-        if cred_path and os.path.exists(cred_path):
-            cred = credentials.Certificate(cred_path)
-        else:
-            # Falls back to GOOGLE_APPLICATION_CREDENTIALS / metadata server if set.
-            cred = credentials.ApplicationDefault()
-        firebase_admin.initialize_app(cred)
-    return firestore.client()
-
-
-def write_chain(db, chain: dict):
-    db.collection("chains").document(chain["expiration"]).set(chain)
-
-
-def write_expirations(db, expirations: list[str]):
-    db.collection("meta").document("expirations").set(
-        {
-            "expirations": expirations,
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-
-
-def write_vix(db, vix: dict):
-    db.collection("meta").document("vix").set(vix)
-
-
-def cleanup_stale(db, keep: set[str]):
-    """Delete chain docs we no longer maintain (expired / outside the window)."""
-    for doc in db.collection("chains").stream():
-        if doc.id not in keep:
-            doc.reference.delete()
-            print(f"  Removed stale chain {doc.id}")
+    return build_chain_doc(expiration, spot, rows)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

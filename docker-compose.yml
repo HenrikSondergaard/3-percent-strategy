@@ -1,0 +1,43 @@
+# IB Gateway, headless, for the IBKR -> Firestore fetcher.
+#
+# The gnzsnz/ib-gateway image bundles IB Gateway + IBC + Xvfb and handles the daily
+# auto-restart and the 2FA timeout flow that the TWS API otherwise makes painful.
+# The Python fetcher (ibkr_to_firebase.py) runs OUTSIDE this compose as a systemd
+# service and connects to the live API on 127.0.0.1:4001 (see ibkr-fetcher.service).
+#
+# Secrets come from a local .env file (git-ignored). Copy .env.example -> .env first.
+#
+#   docker compose up -d
+#   docker compose logs -f          # watch login / 2FA prompts
+#
+# Real-time OPRA data lives on your LIVE account, so TRADING_MODE must be "live"
+# and the fetcher must use the live port (4001).
+
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    restart: unless-stopped
+    environment:
+      TWS_USERID: ${TWS_USERID}
+      TWS_PASSWORD: ${TWS_PASSWORD}
+      TRADING_MODE: ${TRADING_MODE:-live}
+      READ_ONLY_API: ${READ_ONLY_API:-yes}        # we only read market data, never trade
+      BYPASS_WARNING: ${BYPASS_WARNING:-yes}
+      TIME_ZONE: ${TIME_ZONE:-Europe/Stockholm}
+      # Daily auto-restart keeps the session alive without a fresh 2FA each day;
+      # with 2FA you then only re-approve roughly weekly on the IBKR Mobile push.
+      AUTO_RESTART_TIME: ${AUTO_RESTART_TIME:-11:59 PM}
+      TWOFA_TIMEOUT_ACTION: ${TWOFA_TIMEOUT_ACTION:-restart}
+      RELOGIN_AFTER_TWOFA_TIMEOUT: ${RELOGIN_AFTER_TWOFA_TIMEOUT:-yes}
+      VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
+      # Persist settings in a SEPARATE dir — NOT /home/ibgateway/Jts. Mounting an
+      # empty volume over /home/ibgateway/Jts hides the image's jts.ini.tmpl template
+      # and the container crash-loops with "jts.ini.tmpl: No such file or directory".
+      TWS_SETTINGS_PATH: ${TWS_SETTINGS_PATH:-/home/ibgateway/tws_settings}
+    ports:
+      # host : container  — bind to localhost only; the fetcher is on the same box.
+      - "127.0.0.1:4001:4003"   # live API   (gateway 4001 -> socat 4003)
+      - "127.0.0.1:4002:4004"   # paper API  (gateway 4002 -> socat 4004)
+      - "127.0.0.1:5900:5900"   # VNC — for first login / troubleshooting only
+    volumes:
+      - ./tws_settings:/home/ibgateway/tws_settings   # persists TWS/IBC settings (jts.ini etc.)
