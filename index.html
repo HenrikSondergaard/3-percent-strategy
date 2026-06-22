@@ -294,7 +294,7 @@ footer {
 
     <!-- Spread Scanner -->
     <div class="strat-card full-width" id="scannerCard">
-      <h3>Credit Spread Scanner ($10-wide) <span style="font-weight:400;color:#8b949e"> — click a row to select for Iron Condor</span> <span id="staleNote" style="display:none;font-weight:600;color:#d29922;margin-left:8px">\u26A0 After-hours data — bids/asks may be stale</span></h3>
+      <h3>Credit Spread Scanner ($10-wide) <span style="font-weight:400;color:#8b949e"> — click a row to select for Iron Condor</span> <span id="staleNote" style="display:none;font-weight:600;color:#d29922;margin-left:8px">⚠ After-hours data — bids/asks may be stale</span></h3>
       <div id="scannerContent"><span style="color:#484f58">Loading...</span></div>
     </div>
 
@@ -465,7 +465,7 @@ function loadChain() {
     currentChainData = data;
     renderTable(data, strikeSel.value);
     renderStrategy(data);
-    const dte = Math.round((new Date(exp + 'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
+    const dte = dteInclusive(exp);
     footerInfo.textContent = data.rows.length + ' strikes | ' + fmtExp(data.expiration) + ' | DTE: ' + dte;
   }, err => {
     goBtn.disabled = false;
@@ -493,13 +493,13 @@ function renderTable(data, strikeLimit) {
 
   let h = '<table><thead>';
   h += '<tr>';
-  h += '<th colspan="6" class="call-section" style="text-align:center;font-size:11px;padding-bottom:2px">\u25C0 CALLS</th>';
+  h += '<th colspan="7" class="call-section" style="text-align:center;font-size:11px;padding-bottom:2px">\u25C0 CALLS</th>';
   h += '<th class="strike-col"></th>';
-  h += '<th colspan="6" class="put-section" style="text-align:center;font-size:11px;padding-bottom:2px">PUTS \u25B6</th>';
+  h += '<th colspan="7" class="put-section" style="text-align:center;font-size:11px;padding-bottom:2px">PUTS \u25B6</th>';
   h += '</tr><tr>';
-  h += th('IV %', 'call-section') + th('Bid', 'call-section') + th('Ask', 'call-section') + th('Last', 'call-section') + th('Vol', 'call-section') + th('OI', 'call-section');
+  h += th('\u0394', 'call-section') + th('IV %', 'call-section') + th('Bid', 'call-section') + th('Ask', 'call-section') + th('Last', 'call-section') + th('Vol', 'call-section') + th('OI', 'call-section');
   h += th('Strike', 'strike-col');
-  h += th('Vol', 'put-section') + th('OI', 'put-section') + th('Bid', 'put-section') + th('Ask', 'put-section') + th('Last', 'put-section') + th('IV %', 'put-section');
+  h += th('Vol', 'put-section') + th('OI', 'put-section') + th('Bid', 'put-section') + th('Ask', 'put-section') + th('Last', 'put-section') + th('IV %', 'put-section') + th('\u0394', 'put-section');
   h += '</tr></thead><tbody>';
 
   for (let i = 0; i < rows.length; i++) {
@@ -512,6 +512,7 @@ function renderTable(data, strikeLimit) {
     const cCls = c.itm ? ' itm' : '';
     const pCls = p.itm ? ' itm' : '';
 
+    h += td(c.delta, cCls, 2);
     h += td(c.iv, cCls, 2, '%');
     h += td(c.bid, cCls, 2);
     h += td(c.ask, cCls, 2);
@@ -525,6 +526,7 @@ function renderTable(data, strikeLimit) {
     h += td(p.ask, pCls, 2);
     h += td(p.last, pCls, 2);
     h += td(p.iv, pCls, 2, '%');
+    h += td(p.delta, pCls, 2);
     h += '</tr>';
   }
 
@@ -542,6 +544,9 @@ function updateDataTimestamp(chainData) {
   }
   if (vixData && vixData.fetched_at) {
     parts.push('VIX: ' + new Date(vixData.fetched_at).toLocaleString());
+  }
+  if (calendarData && calendarData.fetched_at) {
+    parts.push('Calendar: ' + new Date(calendarData.fetched_at).toLocaleString());
   }
   if (parts.length) {
     el.textContent = parts.join('  \u2502  ');
@@ -608,7 +613,7 @@ function renderGoNoGo() {
   }
   // DTE
   const exp = currentChainData.expiration;
-  const dte = Math.round((new Date(exp+'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
+  const dte = dteInclusive(exp);
   if (dte >= 2 && dte <= 5) {
     rows.push({ cls: 'green', icon: '\u2713', label: 'DTE: ' + dte, detail: 'Good for weekly' });
   } else if (dte >= 1) {
@@ -657,7 +662,7 @@ function renderWEM(data) {
   if (!data || !data.rows) { el.innerHTML = '<span style="color:#484f58">No data</span>'; return; }
   const spot = data.spot, ttm = data.ttm;
   if (!spot || !ttm) { el.innerHTML = '<span style="color:#484f58">Missing spot/ttm</span>'; return; }
-  const dte = Math.max(1, Math.round(ttm * 365.25));
+  const dte = dteInclusive(data.expiration);
 
   // Pick the call / put whose delta is nearest the target (needs delta + IV).
   let bestCall = null, bestPut = null, cDist = Infinity, pDist = Infinity;
@@ -879,7 +884,7 @@ function renderSummary() {
   const d = currentChainData;
   const vix = vixData ? vixData.vix : null;
   const exp = d.expiration;
-  const dte = Math.max(1, Math.round((new Date(exp+'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000));
+  const dte = dteInclusive(exp);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const expDt = new Date(exp+'T17:00:00');
   const expLabel = months[expDt.getMonth()] + ' ' + expDt.getDate();
@@ -967,18 +972,19 @@ function fmtNum(val, decimals) {
   return Number(val).toLocaleString('en-US', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
 }
 
+// Days to expiration, counting today as day 1 (e.g. Mon -> Fri = 5).
+function dteInclusive(d) {
+  const exp = new Date(d + 'T00:00:00');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.round((exp - today) / 86400000) + 1;
+}
+
 function fmtExp(d) {
   const dt = new Date(d + 'T17:00:00');
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const diffMs = new Date(d + 'T00:00:00') - today;
-  const dte = Math.round(diffMs / 86400000);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const label = days[dt.getDay()] + ' ' + months[dt.getMonth()] + ' ' + String(dt.getDate()).padStart(2,'0');
-  if (dte === 0) return label + '  0DTE';
-  if (dte === 1) return label + '  1DTE';
-  return label + '  ' + dte + 'DTE';
+  return label + '  ' + dteInclusive(d) + 'DTE';
 }
 
 function round4(v) { return Math.round(v * 10000) / 10000; }
