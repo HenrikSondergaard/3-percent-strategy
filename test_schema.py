@@ -137,6 +137,70 @@ def test_select_strikes_band_and_count():
     assert ibkr.select_strikes(strikes, 5430, 25, 10) == [5450]
 
 
+# ── Delta-aware (skew) strike selection ──────────────────────────────────────
+def _skew_otm_delta(measured, spot):
+    """Synthetic OTM |delta| curve with downside skew: at equal distance a put sits
+    at a larger |delta| than a call (puts decay slower)."""
+    d = {}
+    for s in measured:
+        if s < spot:
+            d[s] = round(0.5 - (spot - s) * 0.03, 4)              # puts: gentle slope
+        else:
+            d[s] = round(max(0.5 - (s - spot) * 0.05, 0.01), 4)   # calls: steeper
+    return d
+
+
+def test_select_by_delta_cold_start_falls_back_to_points():
+    listed = list(range(60, 141))
+    # No greeks yet -> identical to the point-band bootstrap.
+    assert (ibkr.select_strikes_by_delta(listed, 100, {}, 0.10, 100, 40)
+            == ibkr.select_strikes(listed, 100, 40, 100))
+
+
+def test_select_by_delta_trims_calls_and_extends_puts():
+    listed = list(range(60, 141))
+    measured = range(88, 113)                       # the currently-subscribed window
+    otm = _skew_otm_delta(measured, 100)
+    out = ibkr.select_strikes_by_delta(listed, 100, otm, 0.10, 100, 40, extend=4)
+    # Call wing stops at the floor (109 = 0.05) — deeper measured calls are dropped.
+    assert 109 in out and 110 not in out and 112 not in out
+    # Put wing grows past the measured edge (88) by `extend` so next cycle learns them.
+    assert 88 in out and 84 in out and 83 not in out
+    # Skew asymmetry: the put wing reaches further from spot than the call wing.
+    assert (100 - min(out)) > (max(out) - 100)
+    assert out == sorted(set(out))
+
+
+def test_select_by_delta_caps_to_budget_nearest_in_delta():
+    listed = list(range(60, 141))
+    otm = _skew_otm_delta(range(88, 113), 100)
+    out = ibkr.select_strikes_by_delta(listed, 100, otm, 0.10, 8, 40, extend=4)
+    assert len(out) == 8
+    assert 100 in out                # ATM kept
+    assert 84 not in out and 109 not in out   # deep wings culled first
+
+
+def test_select_by_delta_clamped_to_band():
+    listed = list(range(60, 141))
+    otm = _skew_otm_delta(range(88, 113), 100)
+    out = ibkr.select_strikes_by_delta(listed, 100, otm, 0.10, 100, 5, extend=4)
+    assert min(out) == 95 and max(out) == 105   # never selects or extends past ±band
+
+
+def test_walk_wing_extends_when_still_rich():
+    # ATM -> OTM order; measured to 96, still above floor -> extend by 3.
+    side = [99, 98, 97, 96, 95, 94, 93, 92]
+    known = {99: 0.40, 98: 0.34, 97: 0.28, 96: 0.22}
+    assert ibkr._walk_wing(side, known, 0.10, 3) == [99, 98, 97, 96, 95, 94, 93]
+
+
+def test_walk_wing_stops_at_floor_inside_measured():
+    side = [99, 98, 97, 96, 95, 94]
+    known = {99: 0.40, 98: 0.22, 97: 0.12, 96: 0.08, 95: 0.05}
+    # 96 dips below 0.10 -> kept for margin, then stop (deeper 95 dropped).
+    assert ibkr._walk_wing(side, known, 0.10, 3) == [99, 98, 97, 96]
+
+
 def test_fmt_exp():
     assert ibkr.fmt_exp("20260626") == "2026-06-26"
 
