@@ -24,7 +24,11 @@ Configuration (environment variables):
     IBKR_SYMBOL        Underlying (default SPX)
     IBKR_EXCHANGE      Index exchange (default CBOE)
     IBKR_WEEKS         How many upcoming weekly expirations to cover (default 1)
-    IBKR_BAND_POINTS   Strike half-window around spot, in index points (default 150)
+    IBKR_DELTA_FLOOR   Walk each OTM wing out to ~this |delta| (default 0.10) so the
+                       Δ0.15 short strikes sit comfortably inside both wings.
+    IBKR_BAND_POINTS   Safety clamp on the strike half-window, in index points
+                       (default 300). Bounds the delta-driven walk; also the
+                       cold-start window before greeks have arrived.
     IBKR_MAX_LINES     Hard cap on simultaneous market-data lines (default 90)
     PUBLISH_INTERVAL   Seconds between Firestore writes (default 300 = 5 min)
     IGNORE_MARKET_HOURS  If set to 1, publish even when the US market is closed
@@ -76,6 +80,10 @@ EXCHANGE = os.environ.get("IBKR_EXCHANGE", "CBOE")
 WEEKS = int(os.environ.get("IBKR_WEEKS", "1"))
 BAND_POINTS = float(os.environ.get("IBKR_BAND_POINTS", "300"))
 MAX_LINES = int(os.environ.get("IBKR_MAX_LINES", "90"))
+# OTM |delta| each wing is walked out to. The delta-aware walk (select_strikes_by_delta)
+# replaces symmetric point selection so the put wing runs deeper than the call wing to
+# match SPX vol skew; BAND_POINTS is only the safety clamp around it.
+DELTA_FLOOR = float(os.environ.get("IBKR_DELTA_FLOOR", "0.10"))
 PUBLISH_INTERVAL = int(os.environ.get("PUBLISH_INTERVAL", "300"))
 IGNORE_MARKET_HOURS = os.environ.get("IGNORE_MARKET_HOURS") == "1"
 # Bootstrap spot for strike selection when the SPX index isn't ticking (no index
@@ -123,10 +131,65 @@ def target_expirations(available: set[str], today: date, weeks: int) -> list[str
 
 
 def select_strikes(strikes, spot: float, band: float, max_count: int) -> list[float]:
-    """Strikes within ±band of spot, the `max_count` closest to spot, sorted asc."""
+    """Strikes within ±band of spot, the `max_count` closest to spot, sorted asc.
+
+    Bootstrap / fallback selection. `select_strikes_by_delta` is the primary path
+    once greeks are flowing — this one only runs on a cold start (no delta data)."""
     in_band = [s for s in strikes if abs(s - spot) <= band]
     closest = sorted(in_band, key=lambda s: abs(s - spot))[:max_count]
     return sorted(closest)
+
+
+def _walk_wing(side_strikes, known: dict, floor: float, extend: int) -> list[float]:
+    """Strikes to keep on one OTM wing, given `side_strikes` ordered ATM -> deep OTM.
+
+    Keep everything out to the measured edge, stopping early at the first strike whose
+    |delta| drops below `floor` (kept, for one strike of margin). If the wing reaches
+    the edge of what we've measured while still above the floor, tack on up to `extend`
+    further-OTM strikes so the next cycle measures them — this is how a wing grows
+    outward toward `floor`. `known` is {strike: |delta|} for measured strikes."""
+    measured = [i for i, s in enumerate(side_strikes) if s in known]
+    last_measured = measured[-1] if measured else -1
+    keep: list[float] = []
+    for i, s in enumerate(side_strikes):
+        if i <= last_measured:
+            keep.append(s)
+            d = known.get(s)
+            if d is not None and d < floor:
+                return keep           # bracketed the floor inside the measured range
+            continue
+        keep.extend(side_strikes[i:i + extend])   # past the edge, still rich — extend
+        break
+    return keep
+
+
+def select_strikes_by_delta(strikes, spot: float, otm_delta: dict, floor: float,
+                            max_count: int, band: float, extend: int = 10) -> list[float]:
+    """Skew-aware OTM strike window: walk each wing out to ~`floor` |delta|.
+
+    `select_strikes` picks the strikes closest to spot in POINTS, which over-covers
+    the call wing and under-covers the put wing because SPX puts carry higher IV (vol
+    skew): at equal point distance a put sits at a larger |delta| than a call. Here we
+    walk the live delta curve (`otm_delta`: {strike: |delta| of the OTM leg}) out to the
+    same delta on both wings instead, so the Δ0.15 short strikes sit comfortably inside
+    each side. Falls back to the point band on a cold start (no greeks yet). Clamped to
+    ±`band` and capped at `max_count`."""
+    in_band = sorted(s for s in strikes if abs(s - spot) <= band)
+    known = {s: otm_delta[s] for s in in_band if s in otm_delta}
+    if len(known) < 4:                         # too little curve to judge — bootstrap
+        return select_strikes(strikes, spot, band, max_count)
+
+    puts = [s for s in reversed(in_band) if s < spot]    # ATM -> low  (OTM puts)
+    calls = [s for s in in_band if s >= spot]            # ATM -> high (OTM calls)
+    keep = set(_walk_wing(puts, known, floor, extend))
+    keep |= set(_walk_wing(calls, known, floor, extend))
+    keep |= set(sorted(in_band, key=lambda s: abs(s - spot))[:3])   # always hold ATM
+
+    if len(keep) > max_count:
+        # Over budget: keep the strikes nearest the money in DELTA terms. Unmeasured
+        # extension strikes rank at the floor so a freshly grown wing isn't culled first.
+        keep = set(sorted(keep, key=lambda s: known.get(s, floor), reverse=True)[:max_count])
+    return sorted(keep)
 
 
 def otm_right(strike, spot) -> str:
@@ -280,6 +343,19 @@ class Fetcher:
             (calls if right == "C" else puts)[strike] = _mid(t)
         return approx_spot(calls, puts) if (calls and puts) else None
 
+    def _otm_delta(self, exp: str, spot: float) -> dict:
+        """{strike: |delta|} of the OTM leg for `exp`, from the live greeks. Drives the
+        skew-aware strike walk; empty on the first cycle (then selection bootstraps by
+        points)."""
+        out = {}
+        for (e, strike, right), t in self.subs.items():
+            if e != exp or right != otm_right(strike, spot):
+                continue
+            g = t.modelGreeks
+            if g and g.delta is not None and g.delta == g.delta:
+                out[strike] = abs(g.delta)
+        return out
+
     def ensure_subscriptions(self, spot: float):
         """Diff desired contracts against live subscriptions; add/cancel the delta."""
         targets = target_expirations(
@@ -299,7 +375,10 @@ class Fetcher:
             chain = self._chain_for(exp)
             if not chain:
                 continue
-            chosen = select_strikes(self._listed_strikes(exp, chain), spot, BAND_POINTS, per_exp)
+            chosen = select_strikes_by_delta(
+                self._listed_strikes(exp, chain), spot, self._otm_delta(exp, spot),
+                DELTA_FLOOR, per_exp, BAND_POINTS,
+            )
             # The 3 strikes nearest spot carry BOTH legs so put-call parity can price
             # spot — OTM-only legs never share a strike, which parity needs.
             anchors = set(sorted(chosen, key=lambda s: abs(s - spot))[:3])

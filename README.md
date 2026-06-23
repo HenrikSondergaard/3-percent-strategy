@@ -145,7 +145,10 @@ journalctl -u ibkr-fetcher -f
 
 The service connects once, holds a small set of streaming subscriptions (kept under
 the free 100 market-data-line limit via `IBKR_WEEKS` / `IBKR_BAND_POINTS` /
-`IBKR_MAX_LINES`) and writes a Firestore snapshot every `PUBLISH_INTERVAL` seconds
+`IBKR_MAX_LINES`). Strikes are chosen by **delta**, not by a symmetric point window:
+each OTM wing is walked out to ~`IBKR_DELTA_FLOOR` |delta|, so the put wing runs
+deeper than the call wing to match SPX vol skew and the Δ0.15 short strikes sit
+comfortably inside both sides. It writes a Firestore snapshot every `PUBLISH_INTERVAL` seconds
 (default 300). It skips writes outside US index-options hours (09:30–16:15 ET) unless
 `IGNORE_MARKET_HOURS=1`. **Remove the old Tradier cron line** when you cut over.
 
