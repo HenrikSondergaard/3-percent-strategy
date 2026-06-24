@@ -24,7 +24,7 @@ Configuration (environment variables):
     IBKR_SYMBOL        Underlying (default SPX)
     IBKR_EXCHANGE      Index exchange (default CBOE)
     IBKR_WEEKS         How many upcoming weekly expirations to cover (default 1)
-    IBKR_DELTA_FLOOR   Walk each OTM wing out to ~this |delta| (default 0.07) so there
+    IBKR_DELTA_FLOOR   Walk each OTM wing out to ~this |delta| (default 0.05) so there
                        are selectable spreads well beyond the Δ0.15 shorts. The
                        per-expiration MAX_LINES budget caps total strikes, so a low
                        floor never overruns the line allowance — it just reaches as far
@@ -87,7 +87,7 @@ MAX_LINES = int(os.environ.get("IBKR_MAX_LINES", "90"))
 # OTM |delta| each wing is walked out to. The delta-aware walk (select_strikes_by_delta)
 # replaces symmetric point selection so the put wing runs deeper than the call wing to
 # match SPX vol skew; BAND_POINTS is only the safety clamp around it.
-DELTA_FLOOR = float(os.environ.get("IBKR_DELTA_FLOOR", "0.07"))
+DELTA_FLOOR = float(os.environ.get("IBKR_DELTA_FLOOR", "0.05"))
 # Seconds between Firestore flushes. Data streams from IBKR continuously; this only sets
 # how often we write a snapshot (the frontend gets it live via onSnapshot). ~5s is
 # near-real-time and still fits the free Firestore tier — market-hours-only writes are
