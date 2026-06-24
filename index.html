@@ -323,9 +323,8 @@ let chainUnsub = null;   // active per-chain Firestore listener
 // ── Strategy state ──
 let vixData = null;   // { vix, vix_change_pct }
 let currentChainData = null;
-let selectedBPS = null;  // { sellStrike, buyStrike, credit, ... }
+let selectedBPS = null;  // { sellK, buyK, entryCredit } — chosen strikes, re-derived live
 let selectedBCS = null;
-let lastSummaryText = '';  // raw text of the last rendered summary, for the Copy button
 let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
 
 // ── Init: VIX + calendar from repo, expirations + chains live from Firestore ──
@@ -421,6 +420,10 @@ $('chkNFP').onchange = renderGoNoGo;
 function loadChain() {
   const exp = expSel.value;
   if (!exp) return;
+  // New expiration (or a manual Load) → drop picks from the previous chain. Picks are
+  // KEPT across same-expiration live refreshes (renderStrategy no longer clears them).
+  selectedBPS = null;
+  selectedBCS = null;
   goBtn.disabled = true;
   content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading chain...</div>';
 
@@ -516,8 +519,6 @@ function updateDataTimestamp(chainData) {
 }
 
 function renderStrategy(data) {
-  selectedBPS = null;
-  selectedBCS = null;
   updateDataTimestamp(data);
   renderGoNoGo();
   renderWEM(data);
@@ -707,46 +708,46 @@ function centerWindow(arr, anchorIdx, size) {
   return arr.slice(start, start + size);
 }
 
+// Build one $10-wide credit spread for a given short strike from live chain data.
+// strict=true applies the scanner's discovery filters (OTM, not ITM, credit > $0.05).
+// strict=false (the summary) re-derives a spread you've ALREADY chosen, so it keeps
+// showing it even as the credit decays toward the profit target or the short is breached.
+// Returns null unless both legs are quotable. Single source of truth for the scanner,
+// the click handler, and the live summary so they never disagree.
+function buildSpread(type, sellK, data, strict) {
+  if (!data || !data.rows) return null;
+  const isPut = type === 'bps';
+  const buyK = isPut ? sellK - 10 : sellK + 10;
+  const byStrike = {};
+  data.rows.forEach(r => { byStrike[r.strike] = r; });
+  const sRow = byStrike[sellK], bRow = byStrike[buyK];
+  if (!sRow || !bRow) return null;
+  const sell = isPut ? sRow.put : sRow.call;
+  const buy  = isPut ? bRow.put : bRow.call;
+  if (!sell || !buy || sell.bid == null || buy.ask == null) return null;
+  if (strict) {
+    if (sell.itm) return null;
+    if (isPut ? !(sellK < data.spot) : !(sellK > data.spot)) return null;
+  }
+  const credit = sell.bid - buy.ask;
+  if (strict && credit <= 0.05) return null;
+  const maxLoss = Math.max(10 - credit, 0);
+  return { type, sellK, buyK, credit, maxLoss, rr: credit / Math.max(maxLoss, 0.01),
+           sellIV: sell.iv, sellDelta: sell.delta, sellBid: sell.bid, buyAsk: buy.ask };
+}
+
 function renderScanner(data) {
   const el = $('scannerContent');
   if (!data || !data.rows || data.rows.length < 2) {
     el.innerHTML = '<span style="color:#484f58">Not enough data</span>'; return;
   }
-  const spot = data.spot;
   const strikes = data.rows.map(r => r.strike);
-  const byStrike = {};
-  data.rows.forEach(r => { byStrike[r.strike] = r; });
   const bps = [], bcs = [];
-  for (let i = 0; i < strikes.length; i++) {
-    const K = strikes[i];
-    const Klow = K - 10;
-    // BPS: sell put at K, buy put at K-10. Only OTM: K < spot
-    if (K < spot && byStrike[Klow]) {
-      const sell = byStrike[K].put, buy = byStrike[Klow].put;
-      if (sell && buy && sell.bid != null && buy.ask != null && !sell.itm) {
-        const credit = sell.bid - buy.ask;
-        if (credit > 0.05) {
-          const maxLoss = Math.max(10 - credit, 0);
-          const rr = credit / maxLoss;
-          bps.push({ sellK: K, buyK: Klow, credit, maxLoss, rr,
-            sellIV: sell.iv, sellDelta: sell.delta });
-        }
-      }
-    }
-    const Khigh = K + 10;
-    // BCS: sell call at K, buy call at K+10. Only OTM: K > spot
-    if (K > spot && byStrike[Khigh]) {
-      const sell = byStrike[K].call, buy = byStrike[Khigh].call;
-      if (sell && buy && sell.bid != null && buy.ask != null && !sell.itm) {
-        const credit = sell.bid - buy.ask;
-        if (credit > 0.05) {
-          const maxLoss = Math.max(10 - credit, 0);
-          const rr = credit / maxLoss;
-          bcs.push({ sellK: K, buyK: Khigh, credit, maxLoss, rr,
-            sellIV: sell.iv, sellDelta: sell.delta });
-        }
-      }
-    }
+  for (const K of strikes) {
+    const b = buildSpread('bps', K, data, true);
+    if (b) bps.push(b);
+    const c = buildSpread('bcs', K, data, true);
+    if (c) bcs.push(c);
   }
   // Sort by strike: BPS descending (closest to spot), BCS ascending (closest to spot)
   bps.sort((a,b) => b.sellK - a.sellK);
@@ -814,62 +815,34 @@ function renderScanTable(rows, type) {
 function selectSpread(type, sellK, tr) {
   const data = currentChainData;
   if (!data) return;
-  const spot = data.spot;
-  const strikes = data.rows.map(r => r.strike);
-  const byStrike = {};
-  data.rows.forEach(r => { byStrike[r.strike] = r; });
-  // Rebuild arrays to match indices
-  const arr = [];
-  for (let i = 0; i < strikes.length; i++) {
-    const K = strikes[i];
-    if (type === 'bps') {
-      const Klow = K - 10;
-      if (K < spot && byStrike[Klow] && byStrike[K].put && byStrike[Klow].put
-          && byStrike[K].put.bid != null && byStrike[Klow].put.ask != null
-          && !byStrike[K].put.itm) {
-        const credit = byStrike[K].put.bid - byStrike[Klow].put.ask;
-        if (credit > 0.05) arr.push({ sellK: K, buyK: Klow, credit, maxLoss: Math.max(10-credit,0),
-          rr: credit/Math.max(10-credit,0.01), sellIV: byStrike[K].put.iv,
-          sellBid: byStrike[K].put.bid, buyAsk: byStrike[Klow].put.ask });
-      }
-    } else {
-      const Khigh = K + 10;
-      if (K > spot && byStrike[Khigh] && byStrike[K].call && byStrike[Khigh].call
-          && byStrike[K].call.bid != null && byStrike[Khigh].call.ask != null
-          && !byStrike[K].call.itm) {
-        const credit = byStrike[K].call.bid - byStrike[Khigh].call.ask;
-        if (credit > 0.05) arr.push({ sellK: K, buyK: Khigh, credit, maxLoss: Math.max(10-credit,0),
-          rr: credit/Math.max(10-credit,0.01), sellIV: byStrike[K].call.iv,
-          sellBid: byStrike[K].call.bid, buyAsk: byStrike[Khigh].call.ask });
-      }
-    }
-  }
-  // Same sort as renderScanner: by strike
+  const spread = buildSpread(type, sellK, data, true);
+  if (!spread) return;
+  // Store only the chosen STRIKES + the entry credit (for the "since entry" delta).
+  // Live values are re-derived from fresh data each render, so the pick survives a refresh.
+  const pick = { sellK, buyK: spread.buyK, entryCredit: spread.credit };
   if (type === 'bps') {
-    arr.sort((a,b) => b.sellK - a.sellK);   // descending: closest to spot first
+    selectedBPS = (selectedBPS && selectedBPS.sellK === sellK) ? null : pick;
   } else {
-    arr.sort((a,b) => a.sellK - b.sellK);   // ascending: closest to spot first
-  }
-  const s = arr.find(x => x.sellK === sellK);
-  if (!s) return;
-  // Toggle: clicking same row deselects
-  if (type === 'bps') {
-    selectedBPS = (selectedBPS && selectedBPS.sellK === s.sellK) ? null : s;
-  } else {
-    selectedBCS = (selectedBCS && selectedBCS.sellK === s.sellK) ? null : s;
+    selectedBCS = (selectedBCS && selectedBCS.sellK === sellK) ? null : pick;
   }
   // Re-render scanner to update highlights, then summary
   renderScanner(data);
   renderSummary();
 }
 
-function renderSummary() {
-  const el = $('summaryContent');
-  if (!selectedBPS && !selectedBCS) {
-    el.innerHTML = '<div class="summary-placeholder">Select one BPS and one BCS from the scanner above to generate setup.</div>';
-    return;
-  }
+// " (\u25bc $0.10 since entry)" \u2014 credit moved DOWN (good for a seller) / UP since the pick.
+function deltaTag(diff) {
+  if (diff == null || Math.abs(diff) < 0.005) return '';
+  return '  (' + (diff < 0 ? '\u25bc' : '\u25b2') + ' $' + Math.abs(diff).toFixed(2) + ' since entry)';
+}
+
+// Build the summary text from the CURRENT chain (live), for both display and copy.
+// Returns { ts, block } or null when nothing is selected. Re-derives the chosen legs
+// each call, so values track the market; the timestamp is the moment it was composed.
+function composeSummary() {
+  if (!selectedBPS && !selectedBCS) return null;
   const d = currentChainData;
+  if (!d) return null;
   const ts = fmtTimestamp();
   const vix = vixData ? vixData.vix : null;
   const exp = d.expiration;
@@ -877,6 +850,11 @@ function renderSummary() {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const expDt = new Date(exp+'T17:00:00');
   const expLabel = months[expDt.getMonth()] + ' ' + expDt.getDate();
+  // Live re-derivation of the chosen legs (non-strict: keep showing them as the credit
+  // decays toward target or the short gets breached).
+  const bps = selectedBPS ? buildSpread('bps', selectedBPS.sellK, d, false) : null;
+  const bcs = selectedBCS ? buildSpread('bcs', selectedBCS.sellK, d, false) : null;
+
   let t = '';
   t += pad('IRON CONDOR SETUP',40) + ' -- Week ending ' + expLabel + '\n';
   t += '========================================\n';
@@ -887,41 +865,56 @@ function renderSummary() {
   }
   t += pad('DTE:') + dte + '  |  Expiration: Fri ' + expLabel + '\n';
   if (selectedBPS) {
-    t += '\nBULL PUT SPREAD' + '\n';
-    t += '  SELL  ' + pad(selectedBPS.sellK + ' PUT',10) + ' @ $' + selectedBPS.sellBid.toFixed(2);
-    t += '  (IV: ' + (selectedBPS.sellIV!=null ? selectedBPS.sellIV.toFixed(1)+'%' : '-') + ')\n';
-    t += '  BUY   ' + pad(selectedBPS.buyK + ' PUT',10) + ' @ $' + selectedBPS.buyAsk.toFixed(2) + '\n';
-    t += '  Credit: $' + selectedBPS.credit.toFixed(2) + '  |  Max Loss: $' + selectedBPS.maxLoss.toFixed(2) + '\n';
-    t += '  R/R: ' + selectedBPS.rr.toFixed(1) + ':1';
-    t += '  |  Breakeven: ' + (selectedBPS.sellK - selectedBPS.credit).toFixed(2) + '\n';
+    t += '\nBULL PUT SPREAD\n';
+    if (bps) {
+      t += '  SELL  ' + pad(bps.sellK + ' PUT',10) + ' @ $' + bps.sellBid.toFixed(2);
+      t += '  (IV: ' + (bps.sellIV!=null ? bps.sellIV.toFixed(1)+'%' : '-') + ')\n';
+      t += '  BUY   ' + pad(bps.buyK + ' PUT',10) + ' @ $' + bps.buyAsk.toFixed(2) + '\n';
+      t += '  Credit: $' + bps.credit.toFixed(2) + deltaTag(bps.credit - selectedBPS.entryCredit)
+         + '  |  Max Loss: $' + bps.maxLoss.toFixed(2) + '\n';
+      t += '  R/R: ' + bps.rr.toFixed(1) + ':1  |  Breakeven: ' + (bps.sellK - bps.credit).toFixed(2) + '\n';
+    } else {
+      t += '  ' + selectedBPS.sellK + '/' + selectedBPS.buyK + ' PUT \u2014 not in current chain\n';
+    }
   }
   if (selectedBCS) {
-    t += '\nBEAR CALL SPREAD' + '\n';
-    t += '  SELL  ' + pad(selectedBCS.sellK + ' CALL',10) + ' @ $' + selectedBCS.sellBid.toFixed(2);
-    t += '  (IV: ' + (selectedBCS.sellIV!=null ? selectedBCS.sellIV.toFixed(1)+'%' : '-') + ')\n';
-    t += '  BUY   ' + pad(selectedBCS.buyK + ' CALL',10) + ' @ $' + selectedBCS.buyAsk.toFixed(2) + '\n';
-    t += '  Credit: $' + selectedBCS.credit.toFixed(2) + '  |  Max Loss: $' + selectedBCS.maxLoss.toFixed(2) + '\n';
-    t += '  R/R: ' + selectedBCS.rr.toFixed(1) + ':1';
-    t += '  |  Breakeven: ' + (selectedBCS.sellK + selectedBCS.credit).toFixed(2) + '\n';
+    t += '\nBEAR CALL SPREAD\n';
+    if (bcs) {
+      t += '  SELL  ' + pad(bcs.sellK + ' CALL',10) + ' @ $' + bcs.sellBid.toFixed(2);
+      t += '  (IV: ' + (bcs.sellIV!=null ? bcs.sellIV.toFixed(1)+'%' : '-') + ')\n';
+      t += '  BUY   ' + pad(bcs.buyK + ' CALL',10) + ' @ $' + bcs.buyAsk.toFixed(2) + '\n';
+      t += '  Credit: $' + bcs.credit.toFixed(2) + deltaTag(bcs.credit - selectedBCS.entryCredit)
+         + '  |  Max Loss: $' + bcs.maxLoss.toFixed(2) + '\n';
+      t += '  R/R: ' + bcs.rr.toFixed(1) + ':1  |  Breakeven: ' + (bcs.sellK + bcs.credit).toFixed(2) + '\n';
+    } else {
+      t += '  ' + selectedBCS.sellK + '/' + selectedBCS.buyK + ' CALL \u2014 not in current chain\n';
+    }
   }
-  if (selectedBPS && selectedBCS) {
-    const totCredit = selectedBPS.credit + selectedBCS.credit;
-    const totLoss = selectedBPS.maxLoss + selectedBCS.maxLoss;
+  if (bps && bcs) {
+    const totCredit = bps.credit + bcs.credit;
+    const entryTot = selectedBPS.entryCredit + selectedBCS.entryCredit;
     t += '\n----------------------------------------\n';
-    t += pad('TOTAL CREDIT:') + '$' + totCredit.toFixed(2) + '\n';
-    t += pad('TOTAL MAX LOSS:') + '$' + totLoss.toFixed(2) + '\n';
+    t += pad('TOTAL CREDIT:') + '$' + totCredit.toFixed(2) + deltaTag(totCredit - entryTot) + '\n';
+    t += pad('TOTAL MAX LOSS:') + '$' + (bps.maxLoss + bcs.maxLoss).toFixed(2) + '\n';
     t += '\nPROFIT TARGET: Close at $0.10 per spread (GTC)\n';
-    t += 'STOP LOSS: Close at 3x credit received\n';
-    if (selectedBPS) t += '  BPS stop: $' + (selectedBPS.credit * 3).toFixed(2) + '\n';
-    if (selectedBCS) t += '  BCS stop: $' + (selectedBCS.credit * 3).toFixed(2) + '\n';
+    t += 'STOP LOSS: Close at 3x ENTRY credit\n';
+    t += '  BPS stop: $' + (selectedBPS.entryCredit * 3).toFixed(2) + '\n';
+    t += '  BCS stop: $' + (selectedBCS.entryCredit * 3).toFixed(2) + '\n';
   }
-  // Timestamp travels INSIDE the copied text so a shared setup carries the time it
-  // was generated; it also re-stamps on every add/remove since renderSummary runs then.
-  lastSummaryText = 'Generated: ' + ts + '\n\n' + t;
+  return { ts, block: t };
+}
+
+function renderSummary() {
+  const el = $('summaryContent');
+  const c = composeSummary();
+  if (!c) {
+    el.innerHTML = '<div class="summary-placeholder">Select one BPS and one BCS from the scanner above to generate setup.</div>';
+    return;
+  }
   el.innerHTML =
-    '<div class="summary-meta">Generated: ' + escHtml(ts) +
+    '<div class="summary-meta">Generated: ' + escHtml(c.ts) +
     '<button class="copy-btn" onclick="copySummary(this)">Copy</button></div>' +
-    '<div class="summary-block">' + escHtml(t) + '</div>';
+    '<div class="summary-block">' + escHtml(c.block) + '</div>';
 }
 
 function pad(s, n) { n = n || 16; return (s + '                ').substring(0, n); }
@@ -937,7 +930,10 @@ function fmtTimestamp() {
 }
 
 function copySummary(btn) {
-  navigator.clipboard.writeText(lastSummaryText).then(() => {
+  // Recompose NOW so the clipboard captures the live values + the exact second pressed.
+  const c = composeSummary();
+  if (!c) return;
+  navigator.clipboard.writeText('Generated: ' + c.ts + '\n\n' + c.block).then(() => {
     const prev = btn.textContent;
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = prev; }, 1500);
