@@ -16,7 +16,7 @@ from Cloud Firestore** — no rebuilds, no commits on every refresh.
 │    ▲ socket :4001                     │      │  chains/<date>    │      │   Firebase    │
 │    │                                   │      │                   │      │   web SDK)    │
 │  systemd: ibkr_to_firebase.py          │      └──────────────────┘      └───────────────┘
-│    (ib_async streaming, every 5 min)   │
+│    (ib_async streaming, flush ~5 s)    │
 └─────────────────────────────────────┘
 
 The economic calendar is still maintained by GitHub Actions and committed to the repo:
@@ -148,9 +148,12 @@ the free 100 market-data-line limit via `IBKR_WEEKS` / `IBKR_BAND_POINTS` /
 `IBKR_MAX_LINES`). Strikes are chosen by **delta**, not by a symmetric point window:
 each OTM wing is walked out to ~`IBKR_DELTA_FLOOR` |delta|, so the put wing runs
 deeper than the call wing to match SPX vol skew and the Δ0.15 short strikes sit
-comfortably inside both sides. It writes a Firestore snapshot every `PUBLISH_INTERVAL` seconds
-(default 300). It skips writes outside US index-options hours (09:30–16:15 ET) unless
-`IGNORE_MARKET_HOURS=1`. **Remove the old Tradier cron line** when you cut over.
+comfortably inside both sides. Data streams in continuously; it flushes a Firestore
+snapshot every `PUBLISH_INTERVAL` seconds (default 5 — the frontend gets it live via
+`onSnapshot`). Writing only during US index-options hours (09:30–16:15 ET) keeps this
+within the free Firestore tier (~14.6k writes/day < 20k); below ~3s enable Blaze. It
+skips writes outside market hours unless `IGNORE_MARKET_HOURS=1`. **Remove the old
+Tradier cron line** when you cut over.
 
 Debug a single cycle without the loop:
 

@@ -30,7 +30,8 @@ Configuration (environment variables):
                        (default 300). Bounds the delta-driven walk; also the
                        cold-start window before greeks have arrived.
     IBKR_MAX_LINES     Hard cap on simultaneous market-data lines (default 90)
-    PUBLISH_INTERVAL   Seconds between Firestore writes (default 300 = 5 min)
+    PUBLISH_INTERVAL   Seconds between Firestore flushes (default 5). Data streams in
+                       continuously; this is only the snapshot cadence, not a poll rate.
     IGNORE_MARKET_HOURS  If set to 1, publish even when the US market is closed
 
 Usage:
@@ -84,7 +85,12 @@ MAX_LINES = int(os.environ.get("IBKR_MAX_LINES", "90"))
 # replaces symmetric point selection so the put wing runs deeper than the call wing to
 # match SPX vol skew; BAND_POINTS is only the safety clamp around it.
 DELTA_FLOOR = float(os.environ.get("IBKR_DELTA_FLOOR", "0.10"))
-PUBLISH_INTERVAL = int(os.environ.get("PUBLISH_INTERVAL", "300"))
+# Seconds between Firestore flushes. Data streams from IBKR continuously; this only sets
+# how often we write a snapshot (the frontend gets it live via onSnapshot). ~5s is
+# near-real-time and still fits the free Firestore tier — market-hours-only writes are
+# ~14.6k/day (3 docs × 405 min × 60 / 5) < the 20k/day limit. Don't drop below ~3s
+# (Firestore allows ~1 write/s per document) without enabling Blaze billing.
+PUBLISH_INTERVAL = int(os.environ.get("PUBLISH_INTERVAL", "5"))
 IGNORE_MARKET_HOURS = os.environ.get("IGNORE_MARKET_HOURS") == "1"
 # Bootstrap spot for strike selection when the SPX index isn't ticking (no index
 # subscription). Only needed for the first cycle — parity self-corrects after that.
