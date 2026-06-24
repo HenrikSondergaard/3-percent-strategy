@@ -697,16 +697,9 @@ function closestStrikeIdx(arr, target) {
   return best;
 }
 
-// Slice `size` rows from `arr` centered on `anchorIdx`. Keeps `size` rows when
-// possible (sliding the window if the anchor is near an edge), so the anchored
-// row sits in the middle except when the data runs out on one side.
-function centerWindow(arr, anchorIdx, size) {
-  if (arr.length <= size) return arr;
-  let start = anchorIdx - Math.floor(size / 2);
-  if (start < 0) start = 0;
-  if (start + size > arr.length) start = arr.length - size;
-  return arr.slice(start, start + size);
-}
+// How many spreads to show toward ATM of the Δ0.15 short line in the scanner; the
+// rest of each table is everything further OTM — the region we actually sell.
+const SCANNER_ABOVE_WEM = 5;
 
 // Build one $10-wide credit spread for a given short strike from live chain data.
 // strict=true applies the scanner's discovery filters (OTM, not ITM, credit > $0.05).
@@ -752,20 +745,20 @@ function renderScanner(data) {
   // Sort by strike: BPS descending (closest to spot), BCS ascending (closest to spot)
   bps.sort((a,b) => b.sellK - a.sellK);
   bcs.sort((a,b) => a.sellK - b.sellK);
-  // Window 25 spreads centered on the Δ0.15 short strike (from the WEM panel)
-  // so it sits in the middle of each table: the call Δ0.15 strike for BCS, the
-  // put Δ0.15 strike for BPS. Falls back to the closest-to-spot 25 if those
-  // strikes are unavailable.
+  // Anchor each table on the Δ0.15 short strike (from the WEM panel): keep up to
+  // SCANNER_ABOVE_WEM spreads toward ATM of it for context, then everything further
+  // OTM. Drops the redundant deep-ATM spreads (Δ0.4–0.5) we never sell. Arrays are
+  // sorted ATM-first, so the OTM tail is everything after the Δ0.15 index.
   let topBCS, topBPS;
   if (data._wemCallStrike != null) {
     const ai = closestStrikeIdx(bcs, data._wemCallStrike);
     if (bcs[ai]) bcs[ai].isWemLine = true;
-    topBCS = centerWindow(bcs, ai, 25);
+    topBCS = bcs.slice(Math.max(0, ai - SCANNER_ABOVE_WEM));
   } else { topBCS = bcs.slice(0, 25); }
   if (data._wemPutStrike != null) {
     const ai = closestStrikeIdx(bps, data._wemPutStrike);
     if (bps[ai]) bps[ai].isWemLine = true;
-    topBPS = centerWindow(bps, ai, 25);
+    topBPS = bps.slice(Math.max(0, ai - SCANNER_ABOVE_WEM));
   } else { topBPS = bps.slice(0, 25); }
   // Show stale-data warning if fetched outside market hours
   const sn = $('staleNote');
@@ -791,7 +784,7 @@ function renderScanner(data) {
 function renderScanTable(rows, type) {
   if (!rows.length) return '<div style="color:#484f58;font-size:11px">No spreads found</div>';
   let h = '<table class="scan-tbl"><tr>';
-  h += '<th>Sell</th><th>Buy</th><th>Credit</th><th>MaxLoss</th><th>Sell IV%</th><th>Delta</th>';
+  h += '<th>Sell</th><th>Bid</th><th>Buy</th><th>Ask</th><th>Credit</th><th>MaxLoss</th><th>IV%</th><th>Δ</th>';
   h += '</tr>';
   rows.forEach((r, i) => {
     const tgt = r.credit >= 0.55 && r.credit <= 0.65;
@@ -801,7 +794,8 @@ function renderScanTable(rows, type) {
     let cls = sel ? 'selected' : tgt ? 'target' : sec ? 'secondary' : '';
     if (r.isWemLine) cls += (cls ? ' ' : '') + 'wem-line';
     h += '<tr class="'+cls+'" onclick="selectSpread(\''+type+'\','+r.sellK+',this)" data-type="'+type+'" data-sellk="'+r.sellK+'">';
-    h += '<td>'+r.sellK+'</td><td>'+r.buyK+'</td>';
+    h += '<td>'+r.sellK+'</td><td>$'+r.sellBid.toFixed(2)+'</td>';
+    h += '<td>'+r.buyK+'</td><td>$'+r.buyAsk.toFixed(2)+'</td>';
     h += '<td>$'+r.credit.toFixed(2)+'</td>';
     h += '<td>$'+r.maxLoss.toFixed(2)+'</td>';
     h += '<td>'+(r.sellIV!=null?r.sellIV.toFixed(1)+'%':'-')+'</td>';
