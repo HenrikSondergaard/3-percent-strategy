@@ -222,17 +222,6 @@ footer {
       <label>Expiration</label><br>
       <select id="expSelect"><option value="">loading...</option></select>
     </div>
-    <div>
-      <label>Strikes</label><br>
-      <select id="strikeSelect">
-        <option value="10">10</option>
-        <option value="20">20</option>
-        <option value="50" selected>50</option>
-        <option value="100">100</option>
-        <option value="200">200</option>
-        <option value="all">All</option>
-      </select>
-    </div>
     <div style="align-self:flex-end">
       <button class="btn-load" id="goBtn" disabled>Load</button>
     </div>
@@ -247,7 +236,7 @@ footer {
   <span><span class="dot dot-call"></span> Calls</span>
   <span><span class="dot dot-put"></span> Puts</span>
   <span><span class="dot dot-atm"></span> ATM row</span>
-  <span>IV: Tradier (mid)</span>
+  <span>IV: IBKR (model)</span>
   <span id="refreshStatus" class="refresh-status"></span>
 </div>
 
@@ -297,7 +286,7 @@ footer {
 </div>
 
 <footer>
-  <span>Data: Tradier (live) → Firestore</span>
+  <span>Data: IBKR (live) → Firestore</span>
   <span id="footerInfo"></span>
 </footer>
 
@@ -309,7 +298,6 @@ footer {
 <script>
 const $ = id => document.getElementById(id);
 const expSel = $('expSelect');
-const strikeSel = $('strikeSelect');
 const goBtn = $('goBtn');
 const content = $('content');
 const spotEl = $('spotPrice');
@@ -359,7 +347,7 @@ let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
   // Expirations list (live): refreshes the dropdown whenever the fetch script runs.
   db.collection('meta').doc('expirations').onSnapshot(snap => {
     if (!snap.exists) {
-      content.innerHTML = '<div class="error">No data in Firestore yet. Run the Tradier fetch script on your server.</div>';
+      content.innerHTML = '<div class="error">No data in Firestore yet. Run the IBKR fetch service on your server.</div>';
       refreshStatus.textContent = 'No data';
       refreshStatus.className = 'refresh-status error';
       return;
@@ -416,7 +404,6 @@ function nearestFriday() {
 // ── Event handlers ──
 goBtn.onclick = loadChain;
 expSel.onchange = loadChain;
-strikeSel.onchange = () => { if (currentChainData) renderTable(currentChainData, strikeSel.value); else loadChain(); };
 $('chkCPI').onchange = renderGoNoGo;
 $('chkFOMC').onchange = renderGoNoGo;
 $('chkNFP').onchange = renderGoNoGo;
@@ -439,7 +426,7 @@ function loadChain() {
     const data = snap.data();
     spotEl.textContent = data.spot ? fmtNum(data.spot, 2) : '--';
     currentChainData = data;
-    renderTable(data, strikeSel.value);
+    renderTable(data);
     renderStrategy(data);
     const dte = dteInclusive(exp);
     footerInfo.textContent = data.rows.length + ' strikes | ' + fmtExp(data.expiration) + ' | DTE: ' + dte;
@@ -449,20 +436,9 @@ function loadChain() {
   });
 }
 
-function renderTable(data, strikeLimit) {
-  const allRows = data.rows;
+function renderTable(data) {
+  const rows = data.rows;          // always the full chain (server-side OTM band)
   const spot = data.spot || 0;
-  // Apply strike limit
-  let rows = allRows;
-  if (strikeLimit && strikeLimit !== 'all') {
-    const n = parseInt(strikeLimit);
-    let atmIdx = 0, minDist = Infinity;
-    allRows.forEach((r, i) => { const d = Math.abs(r.strike - spot); if (d < minDist) { minDist = d; atmIdx = i; } });
-    const half = n / 2;
-    const start = Math.max(0, Math.round(atmIdx - half));
-    const end = Math.min(allRows.length, Math.round(atmIdx + half));
-    rows = allRows.slice(start, end);
-  }
 
   let atmIdx = 0, minDist = Infinity;
   rows.forEach((r, i) => { const d = Math.abs(r.strike - spot); if (d < minDist) { minDist = d; atmIdx = i; } });
