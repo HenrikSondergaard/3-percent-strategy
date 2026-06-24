@@ -206,6 +206,15 @@ footer {
   color: #484f58; font-style: italic; font-family: inherit;
   font-size: 12px; padding: 20px; text-align: center;
 }
+.summary-meta {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 11px; color: #8b949e; margin-bottom: 8px;
+}
+.copy-btn {
+  background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 3px 10px; font-size: 11px; cursor: pointer;
+}
+.copy-btn:hover { background: #30363d; border-color: #8b949e; }
 .chain-section-header {
   background: #161b22; border-bottom: 1px solid #30363d;
   padding: 8px 24px; font-size: 12px; color: #8b949e;
@@ -316,6 +325,7 @@ let vixData = null;   // { vix, vix_change_pct }
 let currentChainData = null;
 let selectedBPS = null;  // { sellStrike, buyStrike, credit, ... }
 let selectedBCS = null;
+let lastSummaryText = '';  // raw text of the last rendered summary, for the Copy button
 let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
 
 // ── Init: VIX + calendar from repo, expirations + chains live from Firestore ──
@@ -860,6 +870,7 @@ function renderSummary() {
     return;
   }
   const d = currentChainData;
+  const ts = fmtTimestamp();
   const vix = vixData ? vixData.vix : null;
   const exp = d.expiration;
   const dte = dteInclusive(exp);
@@ -904,11 +915,34 @@ function renderSummary() {
     if (selectedBPS) t += '  BPS stop: $' + (selectedBPS.credit * 3).toFixed(2) + '\n';
     if (selectedBCS) t += '  BCS stop: $' + (selectedBCS.credit * 3).toFixed(2) + '\n';
   }
-  el.innerHTML = '<div class="summary-block">' + escHtml(t) + '</div>';
+  // Timestamp travels INSIDE the copied text so a shared setup carries the time it
+  // was generated; it also re-stamps on every add/remove since renderSummary runs then.
+  lastSummaryText = 'Generated: ' + ts + '\n\n' + t;
+  el.innerHTML =
+    '<div class="summary-meta">Generated: ' + escHtml(ts) +
+    '<button class="copy-btn" onclick="copySummary(this)">Copy</button></div>' +
+    '<div class="summary-block">' + escHtml(t) + '</div>';
 }
 
 function pad(s, n) { n = n || 16; return (s + '                ').substring(0, n); }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Local wall-clock time with timezone, e.g. "2026-06-24 15:42:03 CEST" — unambiguous
+// when the setup is shared. Recomputed on every renderSummary (i.e. every add/remove).
+function fmtTimestamp() {
+  return new Date().toLocaleString('sv-SE', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
+  });
+}
+
+function copySummary(btn) {
+  navigator.clipboard.writeText(lastSummaryText).then(() => {
+    const prev = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = prev; }, 1500);
+  }).catch(() => { btn.textContent = 'Copy failed'; });
+}
 
 // ── Helpers ──
 function th(text, cls) { return '<th class="' + cls + '">' + text + '</th>'; }
