@@ -193,7 +193,7 @@ footer {
 .scan-tbl tr.selected td { background: rgba(88,166,255,0.12); outline: 1px solid #58a6ff; }
 .scan-tbl tr.target td { background: rgba(63,185,80,0.08); }
 .scan-tbl tr.secondary td { background: rgba(88,166,255,0.06); }
-/* WEM line — the Δ0.15 short strike each table is centered on */
+/* WEM line — the WEM± band edge each table is anchored on */
 .scan-tbl tr.wem-line td { background: rgba(210,153,34,0.18); border-top: 1px solid #d29922; border-bottom: 1px solid #d29922; }
 .summary-block {
   background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
@@ -677,8 +677,6 @@ function renderWEM(data) {
   currentChainData._wem = (wemHigh + wemLow) / 2;
   currentChainData._wemUpper = upper;
   currentChainData._wemLower = lower;
-  currentChainData._wemCallStrike = bestCall.strike;
-  currentChainData._wemPutStrike = bestPut.strike;
   el.innerHTML = h;
 }
 
@@ -697,7 +695,7 @@ function closestStrikeIdx(arr, target) {
   return best;
 }
 
-// How many spreads to show toward ATM of the Δ0.15 short line in the scanner; the
+// How many spreads to show toward ATM of the WEM± band edge in the scanner; the
 // rest of each table is everything further OTM — the region we actually sell.
 const SCANNER_ABOVE_WEM = 5;
 
@@ -745,18 +743,19 @@ function renderScanner(data) {
   // Sort by strike: BPS descending (closest to spot), BCS ascending (closest to spot)
   bps.sort((a,b) => b.sellK - a.sellK);
   bcs.sort((a,b) => a.sellK - b.sellK);
-  // Anchor each table on the Δ0.15 short strike (from the WEM panel): keep up to
-  // SCANNER_ABOVE_WEM spreads toward ATM of it for context, then everything further
-  // OTM. Drops the redundant deep-ATM spreads (Δ0.4–0.5) we never sell. Arrays are
-  // sorted ATM-first, so the OTM tail is everything after the Δ0.15 index.
+  // Anchor each table on the WEM band edge (from the WEM panel): the BCS whose sold
+  // call ≈ WEM+ (Upper), the BPS whose sold put ≈ WEM- (Lower) — that's where spread
+  // selection begins. Keep up to SCANNER_ABOVE_WEM spreads toward ATM of it for
+  // context, then everything further OTM. Arrays are sorted ATM-first, so the OTM
+  // tail is everything after the WEM± index.
   let topBCS, topBPS;
-  if (data._wemCallStrike != null) {
-    const ai = closestStrikeIdx(bcs, data._wemCallStrike);
+  if (data._wemUpper != null) {
+    const ai = closestStrikeIdx(bcs, data._wemUpper);
     if (bcs[ai]) bcs[ai].isWemLine = true;
     topBCS = bcs.slice(Math.max(0, ai - SCANNER_ABOVE_WEM));
   } else { topBCS = bcs.slice(0, 25); }
-  if (data._wemPutStrike != null) {
-    const ai = closestStrikeIdx(bps, data._wemPutStrike);
+  if (data._wemLower != null) {
+    const ai = closestStrikeIdx(bps, data._wemLower);
     if (bps[ai]) bps[ai].isWemLine = true;
     topBPS = bps.slice(Math.max(0, ai - SCANNER_ABOVE_WEM));
   } else { topBPS = bps.slice(0, 25); }
