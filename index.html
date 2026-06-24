@@ -158,18 +158,16 @@ footer {
 }
 .wem-row .wl { color: #8b949e; }
 .wem-row .wv { color: #e6edf3; font-weight: 600; font-family: 'SF Mono', 'Fira Code', monospace; }
-.wem-bar {
-  height: 20px; background: #21262d; border-radius: 4px;
-  position: relative; margin: 8px 0 4px; overflow: hidden;
+.wem-row .calc { color: #6e7681; font-weight: 400; }
+.wem-row .lead { color: #c9d1d9; }
+.wem-row .res { color: #e6edf3; }
+/* Derivation rows (Δ0.15 inputs): label stacked above a full-width, wrapping calc. */
+.wem-row.wem-calc {
+  flex-direction: column; align-items: flex-start; gap: 2px;
+  border-top: 1px solid #21262d; margin-top: 4px; padding-top: 6px;
 }
-.wem-bar .fill {
-  position: absolute; top: 0; height: 100%;
-  background: rgba(88,166,255,0.15); border-left: 2px solid #58a6ff;
-  border-right: 2px solid #58a6ff;
-}
-.wem-bar .spot-marker {
-  position: absolute; top: 0; height: 100%; width: 2px;
-  background: #3fb950;
+.wem-row.wem-calc .wv {
+  font-weight: 500; text-align: left; white-space: normal; line-height: 1.5;
 }
 .scanner-tables { display: flex; gap: 12px; flex-wrap: wrap; }
 .scanner-half { flex: 1; min-width: 320px; }
@@ -650,26 +648,23 @@ function renderWEM(data) {
   const upper = spot + wemHigh, lower = spot - wemLow;
   const dLabel = WEM_TARGET_DELTA.toFixed(2);
 
+  // Output first (the WEM\u00B1 bounds, with their derivation inline), then the inputs
+  // (\u03940.15 IV \u2192 WEM points) below as the visible calculation that produced them.
+  const pct = pts => fmtNum(pts / spot * 100, 2) + '%';
+  const sqrtTerm = '\u221A(' + dte + '/252)';
   let h = '';
   h += wemRow('Spot', fmtNum(spot, 2));
+  h += wemRow('WEM+', '<span class="calc">' + fmtNum(spot, 2) + ' + ' + fmtNum(wemHigh, 1) + ' =</span> ' + fmtNum(upper, 1));
+  h += wemRow('WEM\u2212', '<span class="calc">' + fmtNum(spot, 2) + ' \u2212 ' + fmtNum(wemLow, 1) + ' =</span> ' + fmtNum(lower, 1));
   h += wemRow('DTE', dte);
-  h += wemRow('Call \u0394' + dLabel, fmtNum(bestCall.strike, 0) + '  IV ' + fmtNum(ivHigh, 1) + '%  (\u0394 ' + fmtNum(bestCall.call.delta, 3) + ')');
-  h += wemRow('Put \u0394' + dLabel,  fmtNum(bestPut.strike, 0)  + '  IV ' + fmtNum(ivLow, 1)  + '%  (\u0394 ' + fmtNum(bestPut.put.delta, 3) + ')');
-  h += wemRow('WEM High', '+' + fmtNum(wemHigh, 1) + ' pts (' + fmtNum(wemHigh / spot * 100, 2) + '%)',
-    'WEM High = Spot \u00D7 IV(call \u0394' + dLabel + ') \u00D7 \u221A(DTE/252)\n= ' + fmtNum(spot,2) + ' \u00D7 ' + fmtNum(ivHigh,1) + '% \u00D7 \u221A(' + dte + '/252)\n= +' + fmtNum(wemHigh,1) + ' pts');
-  h += wemRow('WEM Low', '\u2212' + fmtNum(wemLow, 1) + ' pts (' + fmtNum(wemLow / spot * 100, 2) + '%)',
-    'WEM Low = Spot \u00D7 IV(put \u0394' + dLabel + ') \u00D7 \u221A(DTE/252)\n= ' + fmtNum(spot,2) + ' \u00D7 ' + fmtNum(ivLow,1) + '% \u00D7 \u221A(' + dte + '/252)\n= \u2212' + fmtNum(wemLow,1) + ' pts');
-  h += wemRow('Upper', fmtNum(upper, 1),
-    'Upper = Spot + WEM High\n= ' + fmtNum(spot,2) + ' + ' + fmtNum(wemHigh,1) + '\n= ' + fmtNum(upper,1));
-  h += wemRow('Lower', fmtNum(lower, 1),
-    'Lower = Spot \u2212 WEM Low\n= ' + fmtNum(spot,2) + ' \u2212 ' + fmtNum(wemLow,1) + '\n= ' + fmtNum(lower,1));
-
-  // Visual bar (asymmetric around spot)
-  const maxMove = Math.max(wemHigh, wemLow) * 1.5 || 1;
-  const lowerPct = 50 - (wemLow / maxMove) * 50;
-  const upperPct = 50 + (wemHigh / maxMove) * 50;
-  h += '<div class="wem-bar"><div class="fill" style="left:'+lowerPct+'%;width:'+(upperPct-lowerPct)+'%"></div>';
-  h += '<div class="spot-marker" style="left:50%"></div></div>';
+  h += wemCalcRow('Call \u0394' + dLabel,
+    '<span class="lead">' + fmtNum(bestCall.strike, 0) + '  IV ' + fmtNum(ivHigh, 1) + '% (\u0394 ' + fmtNum(bestCall.call.delta, 3) + '):</span> '
+    + '<span class="calc">' + fmtNum(spot, 2) + ' \u00D7 ' + fmtNum(ivHigh, 1) + '% \u00D7 ' + sqrtTerm + ' =</span> '
+    + '<span class="res">+' + fmtNum(wemHigh, 1) + ' pts (' + pct(wemHigh) + ')</span>');
+  h += wemCalcRow('Put \u0394' + dLabel,
+    '<span class="lead">' + fmtNum(bestPut.strike, 0) + '  IV ' + fmtNum(ivLow, 1) + '% (\u0394 ' + fmtNum(bestPut.put.delta, 3) + '):</span> '
+    + '<span class="calc">' + fmtNum(spot, 2) + ' \u00D7 ' + fmtNum(ivLow, 1) + '% \u00D7 ' + sqrtTerm + ' =</span> '
+    + '<span class="res">\u2212' + fmtNum(wemLow, 1) + ' pts (' + pct(wemLow) + ')</span>');
 
   // Store WEM for scanner + summary
   currentChainData._wemHigh = wemHigh;
@@ -683,6 +678,12 @@ function renderWEM(data) {
 function wemRow(label, value, tooltip) {
   const tt = tooltip ? ' title="' + tooltip.replace(/"/g, '&quot;') + '"' : '';
   return '<div class="wem-row"' + tt + '><span class="wl">'+label+'</span><span class="wv">'+value+'</span></div>';
+}
+
+// A row whose value is a full derivation (strike/IV → formula → result). Stacks the
+// label above the value so the long calculation gets the full width and can wrap.
+function wemCalcRow(label, value) {
+  return '<div class="wem-row wem-calc"><span class="wl">'+label+'</span><span class="wv">'+value+'</span></div>';
 }
 
 // Index of the spread whose sell strike is closest to `target` (a price level).
