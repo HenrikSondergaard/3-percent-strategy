@@ -781,10 +781,18 @@ function mergeChainRows(data) {
 // strict=true applies the scanner's discovery filters (OTM, not ITM, credit > $0.05).
 // strict=false (the summary) re-derives a spread you've ALREADY chosen, so it keeps
 // showing it even as the credit decays toward the profit target or the short is breached.
-// Returns null unless both legs are quotable. Single source of truth for the scanner,
-// the click handler, and the live summary so they never disagree. Reads the merged
-// last-known-good rows (_scanRows) so a strike missing from the current flush doesn't
-// make a spread vanish; falls back to the raw rows before the first merge.
+// Returns null unless BOTH legs have a two-sided market (needed to price the spread).
+// Single source of truth for the scanner, the click handler, and the live summary so they
+// never disagree. Reads the merged last-known-good rows (_scanRows) so a strike missing
+// from the current flush doesn't make a spread vanish; falls back to raw rows pre-merge.
+//
+// What's "interesting" is the SPREAD's net price, not the individual legs. We quote it at
+// three fill points (we sell the short leg, buy the long leg):
+//   low  = short.bid − long.ask  (worst credit — crossing the market)
+//   high = short.ask − long.bid  (best credit)
+//   mid  = short_mid − long_mid  (midpoint — the realistic limit price)
+// `credit` (and everything derived from it: maxLoss, R/R, breakeven, the target
+// highlight, entry credit, stop) is the MID — the headline number across the whole tool.
 function buildSpread(type, sellK, data, strict) {
   if (!data) return null;
   const rows = data._scanRows || data.rows;
@@ -797,16 +805,21 @@ function buildSpread(type, sellK, data, strict) {
   if (!sRow || !bRow) return null;
   const sell = isPut ? sRow.put : sRow.call;
   const buy  = isPut ? bRow.put : bRow.call;
-  if (!sell || !buy || sell.bid == null || buy.ask == null) return null;
+  // Both legs need bid AND ask to price the spread's low/mid/high.
+  if (!sell || !buy || sell.bid == null || sell.ask == null || buy.bid == null || buy.ask == null) return null;
   if (strict) {
     if (sell.itm) return null;
     if (isPut ? !(sellK < data.spot) : !(sellK > data.spot)) return null;
   }
-  const credit = sell.bid - buy.ask;
+  const sellMid = (sell.bid + sell.ask) / 2, buyMid = (buy.bid + buy.ask) / 2;
+  const low  = sell.bid - buy.ask;
+  const high = sell.ask - buy.bid;
+  const mid  = sellMid - buyMid;
+  const credit = mid;
   if (strict && credit <= 0.05) return null;
   const maxLoss = Math.max(10 - credit, 0);
-  return { type, sellK, buyK, credit, maxLoss, rr: credit / Math.max(maxLoss, 0.01),
-           sellIV: sell.iv, sellDelta: sell.delta, sellBid: sell.bid, buyAsk: buy.ask };
+  return { type, sellK, buyK, credit, low, mid, high, maxLoss, rr: credit / Math.max(maxLoss, 0.01),
+           sellIV: sell.iv, sellDelta: sell.delta, sellMid, buyMid };
 }
 
 function renderScanner(data) {
@@ -856,7 +869,7 @@ function renderScanner(data) {
 function renderScanTable(rows, type) {
   if (!rows.length) return '<div style="color:#484f58;font-size:11px">No spreads found</div>';
   let h = '<table class="scan-tbl"><tr>';
-  h += '<th>Sell</th><th>Bid</th><th>Buy</th><th>Ask</th><th>Credit</th><th>MaxLoss</th><th>IV%</th><th>Δ</th>';
+  h += '<th>Sell</th><th>Buy</th><th>Low</th><th>Credit (Mid)</th><th>High</th><th>MaxLoss (Mid)</th><th>IV%</th><th>Δ</th>';
   h += '</tr>';
   rows.forEach((r, i) => {
     const tgt = r.credit >= 0.55 && r.credit <= 0.65;
@@ -866,9 +879,10 @@ function renderScanTable(rows, type) {
     let cls = sel ? 'selected' : tgt ? 'target' : sec ? 'secondary' : '';
     if (r.isWemLine) cls += (cls ? ' ' : '') + 'wem-line';
     h += '<tr class="'+cls+'" onclick="selectSpread(\''+type+'\','+r.sellK+',this)" data-type="'+type+'" data-sellk="'+r.sellK+'">';
-    h += '<td>'+r.sellK+'</td><td>$'+r.sellBid.toFixed(2)+'</td>';
-    h += '<td>'+r.buyK+'</td><td>$'+r.buyAsk.toFixed(2)+'</td>';
-    h += '<td>$'+r.credit.toFixed(2)+'</td>';
+    h += '<td>'+r.sellK+'</td><td>'+r.buyK+'</td>';
+    h += '<td>$'+r.low.toFixed(2)+'</td>';
+    h += '<td>$'+r.credit.toFixed(2)+'</td>';   // mid
+    h += '<td>$'+r.high.toFixed(2)+'</td>';
     h += '<td>$'+r.maxLoss.toFixed(2)+'</td>';
     h += '<td>'+(r.sellIV!=null?r.sellIV.toFixed(1)+'%':'-')+'</td>';
     h += '<td>'+(r.sellDelta!=null?r.sellDelta.toFixed(2):'-')+'</td>';
@@ -933,10 +947,10 @@ function composeSummary() {
   if (selectedBPS) {
     t += '\nBULL PUT SPREAD\n';
     if (bps) {
-      t += '  SELL  ' + pad(bps.sellK + ' PUT',10) + ' @ $' + bps.sellBid.toFixed(2);
+      t += '  SELL  ' + pad(bps.sellK + ' PUT',10) + ' @ $' + bps.sellMid.toFixed(2) + ' (mid)';
       t += '  (IV: ' + (bps.sellIV!=null ? bps.sellIV.toFixed(1)+'%' : '-') + ')\n';
-      t += '  BUY   ' + pad(bps.buyK + ' PUT',10) + ' @ $' + bps.buyAsk.toFixed(2) + '\n';
-      t += '  Credit: $' + bps.credit.toFixed(2) + deltaTag(bps.credit - selectedBPS.entryCredit)
+      t += '  BUY   ' + pad(bps.buyK + ' PUT',10) + ' @ $' + bps.buyMid.toFixed(2) + ' (mid)\n';
+      t += '  Credit (mid): $' + bps.credit.toFixed(2) + deltaTag(bps.credit - selectedBPS.entryCredit)
          + '  |  Max Loss: $' + bps.maxLoss.toFixed(2) + '\n';
       t += '  R/R: ' + bps.rr.toFixed(1) + ':1  |  Breakeven: ' + (bps.sellK - bps.credit).toFixed(2) + '\n';
     } else {
@@ -946,10 +960,10 @@ function composeSummary() {
   if (selectedBCS) {
     t += '\nBEAR CALL SPREAD\n';
     if (bcs) {
-      t += '  SELL  ' + pad(bcs.sellK + ' CALL',10) + ' @ $' + bcs.sellBid.toFixed(2);
+      t += '  SELL  ' + pad(bcs.sellK + ' CALL',10) + ' @ $' + bcs.sellMid.toFixed(2) + ' (mid)';
       t += '  (IV: ' + (bcs.sellIV!=null ? bcs.sellIV.toFixed(1)+'%' : '-') + ')\n';
-      t += '  BUY   ' + pad(bcs.buyK + ' CALL',10) + ' @ $' + bcs.buyAsk.toFixed(2) + '\n';
-      t += '  Credit: $' + bcs.credit.toFixed(2) + deltaTag(bcs.credit - selectedBCS.entryCredit)
+      t += '  BUY   ' + pad(bcs.buyK + ' CALL',10) + ' @ $' + bcs.buyMid.toFixed(2) + ' (mid)\n';
+      t += '  Credit (mid): $' + bcs.credit.toFixed(2) + deltaTag(bcs.credit - selectedBCS.entryCredit)
          + '  |  Max Loss: $' + bcs.maxLoss.toFixed(2) + '\n';
       t += '  R/R: ' + bcs.rr.toFixed(1) + ':1  |  Breakeven: ' + (bcs.sellK + bcs.credit).toFixed(2) + '\n';
     } else {
@@ -960,8 +974,8 @@ function composeSummary() {
     const totCredit = bps.credit + bcs.credit;
     const entryTot = selectedBPS.entryCredit + selectedBCS.entryCredit;
     t += '\n----------------------------------------\n';
-    t += pad('TOTAL CREDIT:') + '$' + totCredit.toFixed(2) + deltaTag(totCredit - entryTot) + '\n';
-    t += pad('TOTAL MAX LOSS:') + '$' + (bps.maxLoss + bcs.maxLoss).toFixed(2) + '\n';
+    t += pad('TOTAL CREDIT (mid):', 20) + '$' + totCredit.toFixed(2) + deltaTag(totCredit - entryTot) + '\n';
+    t += pad('TOTAL MAX LOSS:', 20) + '$' + (bps.maxLoss + bcs.maxLoss).toFixed(2) + '\n';
     t += '\nPROFIT TARGET: Close at $0.10 per spread (GTC)\n';
     t += 'STOP LOSS: Close at 3x ENTRY credit\n';
     t += '  BPS stop: $' + (selectedBPS.entryCredit * 3).toFixed(2) + '\n';
