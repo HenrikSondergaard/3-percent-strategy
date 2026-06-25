@@ -323,6 +323,7 @@ let chainUnsub = null;   // active per-chain Firestore listener
 // ── Strategy state ──
 let vixData = null;   // { vix, vix_change_pct }
 let currentChainData = null;
+let lastFetchedMs = null;  // ms of the latest chain fetched_at — drives the freshness pill
 let selectedBPS = null;  // { sellK, buyK, entryCredit } — chosen strikes, re-derived live
 let selectedBCS = null;
 let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
@@ -347,6 +348,9 @@ let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
 
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
+  refreshStatus.textContent = 'Connecting…';
+  refreshStatus.className = 'refresh-status pending';
+  setInterval(updateFreshness, 5000);   // keep the freshness pill counting up between flushes
 
   // VIX gauge (live) from Firestore.
   db.collection('meta').doc('vix').onSnapshot(snap => {
@@ -366,8 +370,7 @@ let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
     allExpirations = data.expirations || [];
     populateExpirations(allExpirations);
     if (prev && allExpirations.includes(prev)) expSel.value = prev;  // keep the user's selection
-    refreshStatus.textContent = data.fetched_at ? 'Data: ' + new Date(data.fetched_at).toLocaleString() : '';
-    refreshStatus.className = 'refresh-status ok';
+    // (Live status pill is owned by updateFreshness, driven by the chain's fetched_at.)
     goBtn.disabled = false;
     if (!currentChainData) loadChain();  // initial chain load
   }, err => {
@@ -446,6 +449,8 @@ function loadChain() {
     renderStrategy(data);
     const dte = dteInclusive(exp);
     footerInfo.textContent = data.rows.length + ' strikes | ' + fmtExp(data.expiration) + ' | DTE: ' + dte;
+    lastFetchedMs = Date.parse(data.fetched_at) || lastFetchedMs;
+    updateFreshness();
   }, err => {
     goBtn.disabled = false;
     content.innerHTML = '<div class="error">Error loading chain: ' + err.message + '</div>';
@@ -503,6 +508,52 @@ function renderTable(data) {
 }
 
 // ── Strategy Functions ──
+
+// ── Data freshness ────────────────────────────────────────────────────────────
+// The feed flushes every ~5s while the US market is open and stops entirely when it
+// closes (no more snapshots arrive). We judge "live" by the AGE of the latest data
+// (fetched_at), re-checked on a timer so the status keeps counting up even with no new
+// snapshots. usMarketOpenNow() is a real-time DST-aware check (holidays ignored).
+const FRESH_MS = 15000;  // ~3 missed 5s flushes → treat data as no longer live
+
+function fmtAge(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ' + (s % 60) + 's';
+  return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+}
+
+function usMarketOpenNow() {
+  // ET wall-clock components via the locale trick (handles EDT/EST automatically).
+  const et = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day = et.getDay();
+  if (day === 0 || day === 6) return false;            // weekend
+  const mins = et.getHours() * 60 + et.getMinutes();
+  return mins >= 570 && mins <= 960;                   // 09:30–16:00 ET
+}
+
+function updateFreshness() {
+  const sn = $('staleNote');
+  if (lastFetchedMs == null) return;                   // nothing received yet
+  const age = Date.now() - lastFetchedMs;
+  const tsLast = new Date(lastFetchedMs).toLocaleTimeString();
+  if (age < FRESH_MS) {
+    refreshStatus.textContent = '● Live · ' + tsLast;
+    refreshStatus.className = 'refresh-status ok';
+    if (sn) sn.style.display = 'none';
+    return;
+  }
+  if (!usMarketOpenNow()) {
+    refreshStatus.textContent = '● Market closed · last data ' + tsLast;
+    refreshStatus.className = 'refresh-status pending';
+    if (sn) { sn.textContent = '⚠ Market closed — no live data. Showing the last snapshot from ' + tsLast + '; bids/asks are frozen.'; sn.style.display = 'inline'; }
+  } else {
+    refreshStatus.textContent = '● No data for ' + fmtAge(age) + ' · last ' + tsLast;
+    refreshStatus.className = 'refresh-status error';
+    if (sn) { sn.textContent = '⚠ No update for ' + fmtAge(age) + ' — the data feed may be down.'; sn.style.display = 'inline'; }
+  }
+}
 
 function updateDataTimestamp(chainData) {
   const el = $('dataTimestamp');
@@ -790,17 +841,8 @@ function renderScanner(data) {
     if (bps[ai]) bps[ai].isWemLine = true;
     topBPS = bps.slice(Math.max(0, ai - SCANNER_ABOVE_WEM));
   } else { topBPS = bps.slice(0, 25); }
-  // Show stale-data warning if fetched outside market hours
-  const sn = $('staleNote');
-  if (sn && data.fetched_at) {
-    const ft = new Date(data.fetched_at);
-    const day = ft.getUTCDay();
-    const hour = ft.getUTCHours();
-    const minute = ft.getUTCMinutes();
-    const mktMin = hour * 60 + minute;
-    const afterHours = day === 0 || day === 6 || mktMin < 810 || mktMin > 1260;
-    sn.style.display = afterHours ? 'inline' : 'none';
-  }
+  // (Stale/market-closed warning is owned by updateFreshness, which ticks on a timer so
+  // it keeps updating even when no new snapshots arrive.)
   let h = '<div class="scanner-tables">';
   h += '<div class="scanner-half"><h4 class="scanner-calls">Bear Call Spreads (BCS)</h4>';
   h += renderScanTable(topBCS, 'bcs');
