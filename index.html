@@ -169,7 +169,9 @@ footer {
 .wem-row.wem-calc .wv {
   font-weight: 500; text-align: left; white-space: normal; line-height: 1.5;
 }
-.scanner-tables { display: flex; gap: 12px; flex-wrap: wrap; }
+/* Reserve a stable height so the Trade Setup Summary below doesn't jump as the
+   number of scanner rows drifts over a session. */
+.scanner-tables { display: flex; gap: 12px; flex-wrap: wrap; min-height: 300px; align-items: flex-start; }
 .scanner-half { flex: 1; min-width: 320px; }
 .scanner-half h4 {
   font-size: 11px; margin-bottom: 6px;
@@ -422,6 +424,7 @@ function loadChain() {
   // KEPT across same-expiration live refreshes (renderStrategy no longer clears them).
   selectedBPS = null;
   selectedBCS = null;
+  lkgRows.clear();  // different chain → different strikes; don't carry stale rows over
   goBtn.disabled = true;
   content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading chain...</div>';
 
@@ -437,6 +440,8 @@ function loadChain() {
     const data = snap.data();
     spotEl.textContent = data.spot ? fmtNum(data.spot, 2) : '--';
     currentChainData = data;
+    // Smooth the shifting strike band: scanner + summary read this stable union.
+    data._scanRows = mergeChainRows(data);
     renderTable(data);
     renderStrategy(data);
     const dte = dteInclusive(exp);
@@ -700,18 +705,43 @@ function closestStrikeIdx(arr, target) {
 // rest of each table is everything further OTM — the region we actually sell.
 const SCANNER_ABOVE_WEM = 5;
 
+// ── Last-known-good chain cache ────────────────────────────────────────────────
+// The backend sends a fixed-size band of strikes (~85 rows) each flush, but the band's
+// edges shift every flush, so the extreme-OTM strikes on each side drop out and reappear
+// (entirely absent rows, not null legs) — and the call/put tails are anti-correlated.
+// Without smoothing, scanner rows flicker in/out every ~5s and the summary jumps. We
+// union recently-seen strikes, keeping each strike's most recent quotes, and only drop a
+// strike after it's been missing for ROW_TTL_MS (a few flushes). The scanner, click
+// handler, and live summary all read this merged set via buildSpread, so they stay stable;
+// the chain table + WEM keep using the raw fresh snapshot.
+const lkgRows = new Map();        // strike -> { row, seenAt (ms) }
+const ROW_TTL_MS = 16000;         // ~3 missed 5s flushes before a strike is dropped
+
+function mergeChainRows(data) {
+  const now = Date.now();
+  if (data && data.rows) {
+    for (const r of data.rows) lkgRows.set(r.strike, { row: r, seenAt: now });
+  }
+  for (const [k, v] of lkgRows) { if (now - v.seenAt > ROW_TTL_MS) lkgRows.delete(k); }
+  return [...lkgRows.values()].map(v => v.row).sort((a, b) => a.strike - b.strike);
+}
+
 // Build one $10-wide credit spread for a given short strike from live chain data.
 // strict=true applies the scanner's discovery filters (OTM, not ITM, credit > $0.05).
 // strict=false (the summary) re-derives a spread you've ALREADY chosen, so it keeps
 // showing it even as the credit decays toward the profit target or the short is breached.
 // Returns null unless both legs are quotable. Single source of truth for the scanner,
-// the click handler, and the live summary so they never disagree.
+// the click handler, and the live summary so they never disagree. Reads the merged
+// last-known-good rows (_scanRows) so a strike missing from the current flush doesn't
+// make a spread vanish; falls back to the raw rows before the first merge.
 function buildSpread(type, sellK, data, strict) {
-  if (!data || !data.rows) return null;
+  if (!data) return null;
+  const rows = data._scanRows || data.rows;
+  if (!rows) return null;
   const isPut = type === 'bps';
   const buyK = isPut ? sellK - 10 : sellK + 10;
   const byStrike = {};
-  data.rows.forEach(r => { byStrike[r.strike] = r; });
+  rows.forEach(r => { byStrike[r.strike] = r; });
   const sRow = byStrike[sellK], bRow = byStrike[buyK];
   if (!sRow || !bRow) return null;
   const sell = isPut ? sRow.put : sRow.call;
@@ -733,7 +763,7 @@ function renderScanner(data) {
   if (!data || !data.rows || data.rows.length < 2) {
     el.innerHTML = '<span style="color:#484f58">Not enough data</span>'; return;
   }
-  const strikes = data.rows.map(r => r.strike);
+  const strikes = (data._scanRows || data.rows).map(r => r.strike);
   const bps = [], bcs = [];
   for (const K of strikes) {
     const b = buildSpread('bps', K, data, true);
