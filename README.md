@@ -55,7 +55,7 @@ as a percentage in the `iv` field).
 ```
 index.html                  Frontend (single file, reads Firestore live)
 config.js                   Firebase web config (public; safe to commit)
-firestore.rules             Firestore security rules (public read, no client write)
+firestore.rules             Firestore security rules (read requires sign-in, no client write)
 store.py                    Shared: canonical options schema + Firestore writes
 ibkr_to_firebase.py         PRIMARY server script: IBKR streaming -> Firestore
 ibkr_probe.py               Pre-flight: confirm real-time data before deploying
@@ -73,6 +73,22 @@ data/calendar.json          CPI/FOMC/NFP events
 .github/workflows/update-calendar.yml   Updates the calendar weekly
 ```
 
+## Team access
+
+The dashboard is private: the page is gated by **Firebase Authentication (email/password)**
+and the Firestore read rules require a signed-in user, so the data can't be read without an
+account — not even directly from the API with the public web config.
+
+**Add or remove a team member** (no code change or deploy needed):
+
+1. Firebase console → **Authentication → Users**.
+2. **Add user** (email + password) to grant access, or delete a user to revoke it.
+3. Share the credentials with that person; they sign in at the live site.
+
+The sign-in method (Email/Password) is enabled under **Authentication → Sign-in method**.
+The matching read rule lives in [`firestore.rules`](firestore.rules) (`allow read: if
+request.auth != null`); deploy rule changes with `firebase deploy --only firestore:rules`.
+
 ## Setup
 
 ### 1. Firebase / Firestore
@@ -80,7 +96,8 @@ data/calendar.json          CPI/FOMC/NFP events
 1. Create a Firebase project and enable **Cloud Firestore** (production mode).
 2. Add a **Web app** in Project settings → copy the config object into `config.js`
    (replace the `REPLACE_ME` placeholders). This config is public and safe to commit.
-3. Deploy the security rules (public read, writes only via Admin SDK):
+3. Deploy the security rules (read requires sign-in, writes only via Admin SDK — see
+   [Team access](#team-access)):
    ```bash
    firebase deploy --only firestore:rules
    ```
