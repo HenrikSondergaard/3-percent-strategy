@@ -220,9 +220,53 @@ footer {
   padding: 8px 24px; font-size: 12px; color: #8b949e;
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
 }
+/* ── Login gate ── */
+#loginOverlay {
+  position: fixed; inset: 0; z-index: 1000; background: #0d1117;
+  display: flex; align-items: center; justify-content: center;
+}
+.login-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+  padding: 28px 26px; width: 300px; display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+.login-card h2 { color: #58a6ff; font-size: 20px; margin: 0; }
+.login-sub { color: #8b949e; font-size: 12px; margin: -6px 0 6px; }
+.login-card input {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+  padding: 10px 12px; color: #e6edf3; font-size: 14px; font-family: inherit;
+}
+.login-card input:focus { outline: none; border-color: #58a6ff; }
+.login-card button {
+  background: #238636; border: none; border-radius: 6px; padding: 10px;
+  color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.login-card button:hover { background: #2ea043; }
+.login-card button:disabled { opacity: 0.6; cursor: default; }
+.login-error { color: #f85149; font-size: 12px; min-height: 14px; }
+.user-box { margin-left: auto; gap: 8px; }
+.user-box #userEmail { color: #8b949e; }
+.user-box #signoutBtn {
+  background: #21262d; border: 1px solid #30363d; border-radius: 4px;
+  color: #c9d1d9; font-size: 11px; padding: 3px 8px; cursor: pointer;
+}
+.user-box #signoutBtn:hover { border-color: #58a6ff; }
 </style>
 </head>
 <body>
+
+<!-- Team login gate. The whole app sits behind this; data listeners only start once a
+     user is authenticated (Firestore read rules require auth too). -->
+<div id="loginOverlay">
+  <form id="loginForm" class="login-card">
+    <h2>3% Strategy</h2>
+    <div class="login-sub">Team access</div>
+    <input id="loginEmail" type="email" placeholder="Email" autocomplete="username" required>
+    <input id="loginPass" type="password" placeholder="Password" autocomplete="current-password" required>
+    <button type="submit" id="loginBtn">Sign in</button>
+    <div id="loginError" class="login-error"></div>
+  </form>
+</div>
 
 <div class="header">
   <h1>3% Strategy</h1>
@@ -247,6 +291,10 @@ footer {
   <span><span class="dot dot-atm"></span> ATM row</span>
   <span>IV: IBKR (model)</span>
   <span id="refreshStatus" class="refresh-status"></span>
+  <span id="userBox" class="user-box" style="display:none">
+    <span id="userEmail"></span>
+    <button id="signoutBtn" type="button">Sign out</button>
+  </span>
 </div>
 
 <!-- ── Strategy Panel ── -->
@@ -302,6 +350,7 @@ footer {
 <!-- Firebase (compat SDK) + public web config from config.js -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="config.js"></script>
 
 <script>
@@ -334,20 +383,64 @@ let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
   try { const cr = await fetch('data/calendar.json'); if (cr.ok) calendarData = await cr.json(); } catch(e) {}
 
   if (typeof firebase === 'undefined') {
-    content.innerHTML = '<div class="error">Could not load the Firebase SDK (offline?).</div>';
-    refreshStatus.textContent = 'SDK load error';
-    refreshStatus.className = 'refresh-status error';
+    $('loginError').textContent = 'Could not load the Firebase SDK (offline?).';
     return;
   }
   if (typeof firebaseConfig === 'undefined' || firebaseConfig.apiKey === 'REPLACE_ME') {
-    content.innerHTML = '<div class="error">Firebase not configured. Set your project config in config.js (see README).</div>';
-    refreshStatus.textContent = 'Not configured';
-    refreshStatus.className = 'refresh-status error';
+    $('loginError').textContent = 'Firebase not configured (config.js).';
     return;
   }
 
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
+  const auth = firebase.auth();
+
+  // ── Team login gate ──
+  const loginForm = $('loginForm'), loginError = $('loginError'), loginBtn = $('loginBtn');
+  loginForm.addEventListener('submit', e => {
+    e.preventDefault();
+    loginError.textContent = '';
+    loginBtn.disabled = true;
+    auth.signInWithEmailAndPassword($('loginEmail').value.trim(), $('loginPass').value)
+      .catch(err => { loginError.textContent = authErrorMsg(err); })
+      .finally(() => { loginBtn.disabled = false; });
+  });
+  $('signoutBtn').addEventListener('click', () => auth.signOut().then(() => location.reload()));
+
+  // onAuthStateChanged decides what the user sees. Data listeners only start once signed
+  // in (Firestore read rules require auth), and only once (startApp guards re-entry).
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      $('loginOverlay').style.display = 'none';
+      $('userBox').style.display = 'flex';
+      $('userEmail').textContent = user.email || '';
+      startApp();
+    } else {
+      $('loginOverlay').style.display = 'flex';
+      $('userBox').style.display = 'none';
+    }
+  });
+})();
+
+function authErrorMsg(err) {
+  switch (err && err.code) {
+    case 'auth/invalid-email': return 'Invalid email address.';
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found': return 'Wrong email or password.';
+    case 'auth/too-many-requests': return 'Too many attempts — try again later.';
+    case 'auth/operation-not-allowed':
+    case 'auth/configuration-not-found': return 'Email/password sign-in is not enabled for this project yet.';
+    case 'auth/network-request-failed': return 'Network error — check your connection.';
+    default: return (err && err.message) || 'Sign-in failed.';
+  }
+}
+
+// Subscribe to the live Firestore data. Called once, after the user is authenticated.
+let appStarted = false;
+function startApp() {
+  if (appStarted) return;
+  appStarted = true;
   refreshStatus.textContent = 'Connecting…';
   refreshStatus.className = 'refresh-status pending';
   setInterval(updateFreshness, 5000);   // keep the freshness pill counting up between flushes
@@ -378,7 +471,7 @@ let calendarData = null;  // { fetched_at, events: [{date, type, label}] }
     refreshStatus.textContent = 'Connection error';
     refreshStatus.className = 'refresh-status error';
   });
-})();
+}
 
 function populateExpirations(exps) {
   expSel.innerHTML = '';
