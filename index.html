@@ -169,9 +169,13 @@ footer {
 .wem-row.wem-calc .wv {
   font-weight: 500; text-align: left; white-space: normal; line-height: 1.5;
 }
-/* Reserve a stable height so the Trade Setup Summary below doesn't jump as the
-   number of scanner rows drifts over a session. */
-.scanner-tables { display: flex; gap: 12px; flex-wrap: wrap; min-height: 300px; align-items: flex-start; }
+/* Each side scrolls inside a fixed-height box so the scanner card — and the Trade Setup
+   Summary below it — keep a constant height no matter how many rows the band has. */
+.scanner-tables { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.scan-scroll { height: 340px; overflow-y: auto; }
+.scan-scroll::-webkit-scrollbar { width: 8px; }
+.scan-scroll::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+.scan-scroll::-webkit-scrollbar-track { background: transparent; }
 .scanner-half { flex: 1; min-width: 320px; }
 .scanner-half h4 {
   font-size: 11px; margin-bottom: 6px;
@@ -181,12 +185,13 @@ footer {
 .scanner-half h4.scanner-puts { color: #f85149; }
 .scan-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
 .scan-tbl th {
-  text-align: right; padding: 4px 6px; color: #8b949e;
+  text-align: center; padding: 4px 6px; color: #8b949e;
   font-weight: 600; font-size: 10px; text-transform: uppercase;
   border-bottom: 1px solid #21262d; white-space: nowrap;
+  position: sticky; top: 0; background: #0d1117; z-index: 1;
 }
 .scan-tbl td {
-  padding: 4px 6px; text-align: right; white-space: nowrap;
+  padding: 4px 6px; text-align: center; white-space: nowrap;
   border-bottom: 1px solid #161b22; cursor: pointer;
 }
 .scan-tbl tr:hover td { background: #161b22; }
@@ -951,10 +956,10 @@ function renderScanner(data) {
   // it keeps updating even when no new snapshots arrive.)
   let h = '<div class="scanner-tables">';
   h += '<div class="scanner-half"><h4 class="scanner-calls">Bear Call Spreads (BCS)</h4>';
-  h += renderScanTable(topBCS, 'bcs');
+  h += '<div class="scan-scroll">' + renderScanTable(topBCS, 'bcs') + '</div>';
   h += '</div>';
   h += '<div class="scanner-half"><h4 class="scanner-puts">Bull Put Spreads (BPS)</h4>';
-  h += renderScanTable(topBPS, 'bps');
+  h += '<div class="scan-scroll">' + renderScanTable(topBPS, 'bps') + '</div>';
   h += '</div></div>';
   el.innerHTML = h;
 }
