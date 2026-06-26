@@ -97,6 +97,7 @@ td.itm { color: #484f58; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .error { color: #f85149; text-align: center; padding: 40px; }
+
 footer {
   background: #161b22; border-top: 1px solid #30363d;
   padding: 8px 24px; font-size: 11px; color: #484f58;
@@ -220,11 +221,43 @@ footer {
   border-radius: 6px; padding: 3px 10px; font-size: 11px; cursor: pointer;
 }
 .copy-btn:hover { background: #30363d; border-color: #8b949e; }
-.chain-section-header {
-  background: #161b22; border-bottom: 1px solid #30363d;
-  padding: 8px 24px; font-size: 12px; color: #8b949e;
-  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+
+.table-content-wrapper {
+  overflow: visible;
 }
+
+.table-content-wrapper.collapsed {
+  display: none;
+}
+
+.chain-header-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 24px;
+  font-size: 12px;
+  color: #8b949e;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #30363d;
+  background: #161b22;
+}
+
+.toggle-btn {
+  background: #21262d;
+  color: #58a6ff;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.toggle-btn:hover {
+  border-color: #58a6ff;
+}
+
 /* ── Login gate ── */
 #loginOverlay {
   position: fixed; inset: 0; z-index: 1000; background: #0d1117;
@@ -339,9 +372,12 @@ footer {
   </div>
 </div>
 
-<div class="chain-section-header">Full Options Chain</div>
+<div class="chain-header-flex">
+  <span>Full Options Chain</span>
+  <button class="toggle-btn" id="toggleChain">&#x25BC;</button>
+</div>
 
-<div class="table-wrap" id="tableWrap">
+<div class="table-content-wrapper" id="tableWrap">
   <div id="content">
     <div class="loading">Loading expirations...</div>
   </div>
@@ -517,6 +553,22 @@ expSel.onchange = loadChain;
 $('chkCPI').onchange = renderGoNoGo;
 $('chkFOMC').onchange = renderGoNoGo;
 $('chkNFP').onchange = renderGoNoGo;
+
+// ── Options-chain collapse toggle ──
+const tableWrap = $('tableWrap');
+const toggleChain = $('toggleChain');
+toggleChain.addEventListener('click', () => {
+  const isCollapsed = tableWrap.classList.toggle('collapsed');
+  toggleChain.innerHTML = isCollapsed ? '&#x25BC;' : '&#x25B2;';
+  localStorage.setItem('chainCollapsed', isCollapsed ? '1' : '0');
+});
+// Set initial state from localStorage (default: collapsed)
+if (localStorage.getItem('chainCollapsed') !== '0') {
+  tableWrap.classList.add('collapsed');
+  toggleChain.innerHTML = '&#x25BC;';
+} else {
+  toggleChain.innerHTML = '&#x25B2;';
+}
 
 function loadChain() {
   const exp = expSel.value;
