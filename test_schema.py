@@ -129,6 +129,18 @@ def test_target_expirations_handles_holiday():
     assert ibkr.target_expirations(avail, date(2026, 6, 22), 1) == ["20260625"]
 
 
+def test_target_expirations_rolls_forward_on_expiry_day():
+    # Friday 26th is a holiday, so Thursday 25th is the week's last trading day.
+    avail = {"20260622", "20260623", "20260624", "20260625",
+             "20260629", "20260630", "20260701", "20260702", "20260703"}
+    # Day before expiry: still this week's last day.
+    assert ibkr.target_expirations(avail, date(2026, 6, 24), 1) == ["20260625"]
+    # ON expiry day -> roll to next week's last trading day (Fri 3rd).
+    assert ibkr.target_expirations(avail, date(2026, 6, 25), 1) == ["20260703"]
+    # After expiry (Fri, market already moved on) -> next week too.
+    assert ibkr.target_expirations(avail, date(2026, 6, 26), 1) == ["20260703"]
+
+
 def test_select_strikes_band_and_count():
     strikes = [5300, 5350, 5400, 5450, 5500]
     # spot 5430, ±150 keeps all; closest 3 are 5450, 5400, 5500 -> sorted asc.

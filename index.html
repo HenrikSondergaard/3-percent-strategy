@@ -1078,8 +1078,10 @@ function composeSummary() {
   const exp = d.expiration;
   const dte = dteInclusive(exp);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const wdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const expDt = new Date(exp+'T17:00:00');
   const expLabel = months[expDt.getMonth()] + ' ' + expDt.getDate();
+  const expWday = wdays[expDt.getDay()];
   // Live re-derivation of the chosen legs (non-strict: keep showing them as the credit
   // decays toward target or the short gets breached).
   const bps = selectedBPS ? buildSpread('bps', selectedBPS.sellK, d, false) : null;
@@ -1093,7 +1095,7 @@ function composeSummary() {
     t += pad('WEM:') + fmtNum(d._wemLower,0) + ' / ' + fmtNum(d._wemUpper,0)
        + '  (\u2212' + fmtNum(d._wemLow,1) + ' / +' + fmtNum(d._wemHigh,1) + ' pts)\n';
   }
-  t += pad('DTE:') + dte + '  |  Expiration: Fri ' + expLabel + '\n';
+  t += pad('DTE:') + dte + '  |  Expiration: ' + expWday + ' ' + expLabel + '\n';
   if (selectedBPS) {
     t += '\nBULL PUT SPREAD\n';
     if (bps) {

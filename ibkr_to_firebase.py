@@ -124,9 +124,14 @@ def target_expirations(available: set[str], today: date, weeks: int) -> list[str
     `available` is the set of YYYYMMDD strings IBKR lists. For each upcoming week we
     take the latest available date within Mon–Fri of that week, which gracefully
     handles holidays (Friday closed -> Thursday) and mid-week starts.
+
+    The filter is strict (`> today`, not `>=`): once today *is* the week's last
+    trading day there's no later date left in that Mon–Fri window, so the loop falls
+    through to the next week and lands on its last trading day. This matches the
+    strategy — by expiry day the current spread is done, so we want next week's chain.
     """
     avail = sorted(datetime.strptime(d, "%Y%m%d").date() for d in available)
-    avail = [d for d in avail if d >= today]
+    avail = [d for d in avail if d > today]
     out: list[date] = []
     offset = 0
     while len(out) < weeks and offset < weeks + 5:
