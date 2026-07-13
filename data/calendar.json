@@ -1,11 +1,11 @@
 {
-  "fetched_at": "2026-07-06T07:36:47.781669+00:00",
+  "fetched_at": "2026-07-13T09:22:12.357691+00:00",
   "events": [
     {
-      "date": "2026-07-02",
-      "type": "NFP",
-      "label": "NFP (Jul 2026)",
-      "time_utc": "12:30"
+      "date": "2026-07-08",
+      "type": "FOMC",
+      "label": "FOMC Meeting (July)",
+      "time_utc": "18:00"
     },
     {
       "date": "2026-07-09",
@@ -74,12 +74,6 @@
       "time_utc": "18:00"
     },
     {
-      "date": "2026-09-16",
-      "type": "FOMC",
-      "label": "FOMC Meeting (September)",
-      "time_utc": "18:00"
-    },
-    {
       "date": "2026-10-02",
       "type": "NFP",
       "label": "NFP (Oct 2026)",
@@ -96,6 +90,18 @@
       "type": "FOMC",
       "label": "FOMC Meeting (October)",
       "time_utc": "18:00"
+    },
+    {
+      "date": "2026-11-06",
+      "type": "NFP",
+      "label": "NFP (Nov 2026)",
+      "time_utc": "12:30"
+    },
+    {
+      "date": "2026-11-10",
+      "type": "CPI",
+      "label": "CPI (Nov 2026)",
+      "time_utc": "12:30"
     }
   ]
 }
