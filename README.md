@@ -187,8 +187,9 @@ silently (no 2FA). Left alone, that weekly 2FA first surfaces on the Sunday-nigh
 auto-restart and, if unapproved overnight, leaves the feed down Monday morning.
 
 `sunday_reauth.sh` forces the login attempt (and the IBKR Mobile push) at a civil
-Sunday hour and re-sends it every 15 min until you approve — then it goes quiet on
-its own, because each run first checks whether the feed is already authenticated:
+Sunday hour and re-sends it every 15 min until you approve — then it goes quiet for
+the rest of the day. On any other day it only acts on a clear "connect failed"
+signal, so a manual run against a live feed is a harmless no-op:
 
 ```bash
 crontab -e
