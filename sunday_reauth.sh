@@ -14,10 +14,11 @@
 #                   "connect failed" signal. So a manual test on a live feed is a no-op
 #                   and never forces a needless 2FA.
 #
-# Install (marvin crontab — every 15 min on Sundays, 09:00–23:45 local time):
+# Install (marvin crontab — every 15 min on Sundays, 09:00–23:45 local time). Run via
+# `bash` so no execute bit is needed (a git pull never trips over a local chmod +x):
 #   crontab -e
 #   CRON_TZ=Europe/Stockholm
-#   */15 9-23 * * 0  /home/marvin/3-percent-strategy/sunday_reauth.sh >> /home/marvin/sunday_reauth.log 2>&1
+#   */15 9-23 * * 0  cd /home/marvin/3-percent-strategy && bash sunday_reauth.sh >> /home/marvin/sunday_reauth.log 2>&1
 #
 # NOTE: no `grep -q` on a journalctl pipe — that closes the pipe early, journalctl
 # takes SIGPIPE (141), and `pipefail` makes the check fail even on a match. We read
