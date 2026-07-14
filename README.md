@@ -178,6 +178,29 @@ Debug a single cycle without the loop:
 IGNORE_MARKET_HOURS=1 ./venv/bin/python ibkr_to_firebase.py --once
 ```
 
+#### Weekly Sunday re-authentication
+
+IBKR invalidates the gateway's session token every **Sunday ~01:00 ET** (≈07:00
+Europe/Stockholm). After that a fresh 2FA login is required once before the feed
+works again; the rest of the week the nightly `AUTO_RESTART_TIME` reuses the token
+silently (no 2FA). Left alone, that weekly 2FA first surfaces on the Sunday-night
+auto-restart and, if unapproved overnight, leaves the feed down Monday morning.
+
+`sunday_reauth.sh` forces the login attempt (and the IBKR Mobile push) at a civil
+Sunday hour and re-sends it every 15 min until you approve — then it goes quiet on
+its own, because each run first checks whether the feed is already authenticated:
+
+```bash
+crontab -e
+# add:
+CRON_TZ=Europe/Stockholm
+*/15 9-23 * * 0  /home/you/3-percent-strategy/sunday_reauth.sh >> /home/you/sunday_reauth.log 2>&1
+```
+
+The health check reads the fetcher's journal: a live gateway prints "market closed"
+every few seconds on a (closed) Sunday, a dead one only "connect failed". Pair it
+with a feed-health alert so you're reminded to open the app.
+
 ### 6. Tradier fallback (optional)
 
 `tradier_to_firebase.py` still works and writes the identical schema. Keep it as a
