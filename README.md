@@ -195,10 +195,12 @@ signal, so a manual run against a live feed is a harmless no-op:
 crontab -e
 # add:
 CRON_TZ=Europe/Stockholm
-*/15 9-23 * * 0  /home/you/3-percent-strategy/sunday_reauth.sh >> /home/you/sunday_reauth.log 2>&1
+*/15 9-23 * * 0  cd /home/you/3-percent-strategy && bash sunday_reauth.sh >> /home/you/sunday_reauth.log 2>&1
 ```
 
-The health check reads the fetcher's journal: a live gateway prints "market closed"
+Invoking it via `bash` (rather than the script path directly) means no execute bit
+is needed, so a `git pull` never trips over a local `chmod +x`. The health check
+reads the fetcher's journal: a live gateway prints "market closed"
 every few seconds on a (closed) Sunday, a dead one only "connect failed". Pair it
 with a feed-health alert so you're reminded to open the app.
 
