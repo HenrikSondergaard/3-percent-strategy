@@ -1,18 +1,6 @@
 {
-  "fetched_at": "2026-07-13T09:22:12.357691+00:00",
+  "fetched_at": "2026-07-20T08:54:14.177288+00:00",
   "events": [
-    {
-      "date": "2026-07-08",
-      "type": "FOMC",
-      "label": "FOMC Meeting (July)",
-      "time_utc": "18:00"
-    },
-    {
-      "date": "2026-07-09",
-      "type": "FOMC",
-      "label": "FOMC Meeting (July)",
-      "time_utc": "18:00"
-    },
     {
       "date": "2026-07-14",
       "type": "CPI",
