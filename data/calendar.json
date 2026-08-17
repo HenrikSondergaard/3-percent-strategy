@@ -1,12 +1,6 @@
 {
-  "fetched_at": "2026-08-10T07:28:03.140188+00:00",
+  "fetched_at": "2026-08-17T06:50:09.376661+00:00",
   "events": [
-    {
-      "date": "2026-08-07",
-      "type": "NFP",
-      "label": "NFP (Aug 2026)",
-      "time_utc": "12:30"
-    },
     {
       "date": "2026-08-12",
       "type": "CPI",
@@ -78,6 +72,12 @@
       "type": "FOMC",
       "label": "FOMC Meeting (December)",
       "time_utc": "18:00"
+    },
+    {
+      "date": "2026-12-10",
+      "type": "CPI",
+      "label": "CPI (Dec 2026)",
+      "time_utc": "12:30"
     }
   ]
 }
