@@ -1,12 +1,6 @@
 {
-  "fetched_at": "2026-08-24T06:53:11.218920+00:00",
+  "fetched_at": "2026-08-31T12:41:40.817848+00:00",
   "events": [
-    {
-      "date": "2026-08-19",
-      "type": "FOMC",
-      "label": "FOMC Meeting (August)",
-      "time_utc": "18:00"
-    },
     {
       "date": "2026-09-04",
       "type": "NFP",
