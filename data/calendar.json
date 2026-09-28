@@ -1,12 +1,6 @@
 {
-  "fetched_at": "2026-09-21T06:00:29.591197+00:00",
+  "fetched_at": "2026-09-28T06:00:29.575749+00:00",
   "events": [
-    {
-      "date": "2026-09-15",
-      "type": "FOMC",
-      "label": "FOMC Meeting (September)",
-      "time_utc": "18:00"
-    },
     {
       "date": "2026-10-02",
       "type": "NFP",
@@ -54,6 +48,18 @@
       "type": "CPI",
       "label": "CPI (Dec 2026)",
       "time_utc": "12:30"
+    },
+    {
+      "date": "2027-01-25",
+      "type": "FOMC",
+      "label": "FOMC Meeting (January)",
+      "time_utc": "18:00"
+    },
+    {
+      "date": "2027-01-26",
+      "type": "FOMC",
+      "label": "FOMC Meeting (January)",
+      "time_utc": "18:00"
     }
   ]
 }
