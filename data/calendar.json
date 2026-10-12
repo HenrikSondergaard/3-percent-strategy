@@ -1,11 +1,11 @@
 {
-  "fetched_at": "2026-10-05T06:00:29.644509+00:00",
+  "fetched_at": "2026-10-12T06:00:29.400575+00:00",
   "events": [
     {
-      "date": "2026-10-02",
-      "type": "NFP",
-      "label": "NFP (Oct 2026)",
-      "time_utc": "12:30"
+      "date": "2026-10-07",
+      "type": "FOMC",
+      "label": "FOMC Meeting (October)",
+      "time_utc": "18:00"
     },
     {
       "date": "2026-10-14",
