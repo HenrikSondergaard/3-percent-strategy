@@ -1,11 +1,11 @@
 {
-  "fetched_at": "2026-11-16T06:00:50.265313+00:00",
+  "fetched_at": "2026-11-23T06:00:50.343352+00:00",
   "events": [
     {
-      "date": "2026-11-10",
-      "type": "CPI",
-      "label": "CPI (Nov 2026)",
-      "time_utc": "12:30"
+      "date": "2026-11-18",
+      "type": "FOMC",
+      "label": "FOMC Meeting (November)",
+      "time_utc": "18:00"
     },
     {
       "date": "2026-12-04",
